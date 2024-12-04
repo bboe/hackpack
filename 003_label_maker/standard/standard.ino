@@ -17,6 +17,7 @@
 #define JOYSTICK_TILT_THRESHOLD 200  // Adjust this threshold value based on your joystick
 #define JOYSTICK_X_PIN A2            // Connect the joystick X-axis to this analog pin
 #define JOYSTICK_Y_PIN A1            // Connect the joystick Y-axis to this analog pin
+#define LCD_REPRINT_DELAY 250        // Milliseconds to wait after reprint to avoid ghosting
 #define LCD_WIDTH 16
 #define RESET_Y_STEPS 2500  // The number of steps needed to move the pen holder all the way to the bottom
 #define SCALE_X 230         // these are multiplied against the stored coordinate (between 0 and 4) to get the actual number of steps moved
@@ -26,7 +27,6 @@
 #define SERVO_ON_PAPER_ANGLE 80
 #define SERVO_PIN 13
 #define SPACE (SCALE_X * 5)  // space size between letters (as steps) based on X scale in order to match letter width
-#define SPACE_CHARACTER '_'
 #define STEPPER_STEPS_PER_REVOLUTION 2048
 #define VECTOR_END 192
 #define VECTOR_POINTS 14
@@ -61,7 +61,7 @@ enum State { Edit,
 
 // constants
 const struct Character CHARACTERS[] = {
-  { SPACE_CHARACTER, { VECTOR_END } },
+  { ' ', { VECTOR_END } },
   { 'A', { 0, 124, 140, 32, 112, VECTOR_END } },
   { 'B', { 0, 104, 134, 132, 2, 142, 140, 100, VECTOR_END } },
   { 'C', { 41, 130, 110, 101, 103, 114, 134, 143, VECTOR_END } },
@@ -164,6 +164,8 @@ void setup() {
 
   Serial.println("resetting motors");
   resetMotors();
+
+  updateChosenCharacter();  // Initialize the first space character
   changeState(MainMenu);
 }
 
@@ -196,57 +198,48 @@ void loop() {
       }
       break;
 
-    case Edit:  //in edit mode, joystick directional input adds and removes characters from the string, while up and down changes characters
-      //pressing the joystick button will switch the device into the Print Confirmation mode
-      if (previousState != Edit) {
+    case Edit:
+      // in edit, joystick directional input adds and removes characters from the string, while up and down changes characters
+      // pressing the joystick button will switch the device into the Print Confirmation mode
+      if (previousState == PrintConfirmation) {  // when coming back from a "no" confirmation, re-print the selected text
         previousState = Edit;
-      }
-      lcd.setCursor(0, 0);
-      lcd.print(":");
-      lcd.setCursor(1, 0);
-      lcd.print(setText());
-
-      // Check if the joystick is moved up (previous letter) or down (next letter)
-
-      if (joystickUp) {  //UP (previous character)
+        lcd.print(":");
+        lcd.print(text);           // output the existing selected characters
+        delay(LCD_REPRINT_DELAY);  // this call is to avoid ghosting artifiacts under the blinking cursor
+        lcd.blink();
+      } else if (previousState != Edit) {
+        previousState = Edit;
+        lcd.print(":");
+        lcd.setCursor(1, 0);
+        lcd.blink();
+      } else if (joystickDown) {                                // joystick down (next character)
+        characterIndex = (characterIndex + 1) % ALPHABET_SIZE;  // `% ALPHABET_SIZE` enables moving back to the first character when at the end
+        updateChosenCharacter();
+      } else if (joystickUp) {  // joystick up (previous character)
         if (characterIndex > 0) {
           characterIndex--;
         } else {
           characterIndex = ALPHABET_SIZE - 1;  // move to the end of the available characters
         }
-        lcd.print(CHARACTERS[characterIndex].character);
-        delay(JOYSTICK_TILT_DELAY);                             // Delay to prevent rapid scrolling
-      } else if (joystickDown) {                                //DOWN (next character)
-        characterIndex = (characterIndex + 1) % ALPHABET_SIZE;  // `% ALPHABET_SIZE` enables moving back to the first character when at the end
-        lcd.print(CHARACTERS[characterIndex].character);
-        delay(JOYSTICK_TILT_DELAY);  // Delay to prevent rapid scrolling
-      } else {
-        if (millis() % 600 < 450) {
-          lcd.print(CHARACTERS[characterIndex].character);
-        } else {
-          lcd.print(" ");
-        }
-      }
-
-      // Check if the joystick is moved left (backspace) or right (add space)
-      if (joystickLeft) {  // LEFT (backspace)
+        updateChosenCharacter();
+      } else if (joystickLeft) {  // joystick left (backspace)
         if (chosenSize > 0) {
-          characterIndex = chosenCharacters[--chosenSize];  // set index back to previous character index
           clearDisplay(chosenSize + 1);                     // don't clear characters we want to keep to prevent flicker
+          lcd.setCursor(chosenSize, 0);                     // put cursor back to correct location after clear
+          characterIndex = chosenCharacters[--chosenSize];  // set index back to previous character index
+          updateChosenCharacter();
         }
-        delay(JOYSTICK_TILT_DELAY);                       // Delay to prevent rapid multiple presses
-      } else if (joystickRight) {                         //RIGHT adds a space or character to the label
-        chosenCharacters[chosenSize++] = characterIndex;  //add the current character to the text
+      } else if (joystickRight) {                         // joystick right (adds a character to the label)
+        chosenCharacters[chosenSize++] = characterIndex;  // add the current character to the text
         characterIndex = 0;
-        delay(JOYSTICK_TILT_DELAY);  // Delay to prevent rapid multiple presses
-      }
-
-      if (joystickButton.isPressed()) {
-        // Single click: Add character and reset alphabet scroll
-        if (characterIndex != 0) {                          // Only add non-space characters
-          chosenCharacters[chosenSize++] = characterIndex;  //add the current character to the text
+        lcd.setCursor(chosenSize + 1, 0);  // advance the cursor forward
+        updateChosenCharacter();
+      } else if (joystickButton.isPressed()) {              // joystick click (add character and reset alphabet scroll)
+        if (characterIndex != 0) {                          // only add non-space characters
+          chosenCharacters[chosenSize++] = characterIndex;  // add the current character to the text
         }
         characterIndex = 0;
+        lcd.noBlink();
         changeState(PrintConfirmation);
       }
       break;
@@ -288,6 +281,10 @@ void loop() {
 
     case Print:
       lcd.print(PRINTING);  //update screen
+
+      Serial.print(F("plot: `"));
+      Serial.print(text);
+      Serial.println(F("`"));
 
       plotText();
       chosenSize = 0;
@@ -401,14 +398,10 @@ void plotLine(int newX, int newY, bool drawing) {
 }
 
 void plotText() {  // breaks up the input by character for plotting
-  Serial.print("plot: `");
-  Serial.print(setText());
-  Serial.println("`");
-
   int beginX = 0;  // the x coordinate that the next character should start from which may differ from where `positionX` is
   for (byte index = 0; index < chosenSize; ++index) {
     struct Character character = CHARACTERS[chosenCharacters[index]];
-    if (character.character == SPACE_CHARACTER) {  // if it's a space, add a space.
+    if (character.character == ' ') {  // if it's a space, add a space
       beginX += SPACE;
     } else {
       beginX += plotCharacter(character, beginX);
@@ -442,14 +435,10 @@ void setPen(bool toPaper) {  // used to handle lifting or lowering the pen on to
   }
 }
 
-char *setText() {
-  // updates the global text array to contain the selected text
-  // this array is only used for serial output and when reprinting all the text to the LCD
-  // a pointer to the text is returned for convenience
-  for (byte index = 0; index < chosenSize; ++index) {
-    char character = CHARACTERS[chosenCharacters[index]].character;
-    text[index] = character == SPACE_CHARACTER ? ' ' : character;
-  }
-  text[chosenSize] = '\0';
-  return text;
+void updateChosenCharacter() {  // output the chosen character to the LCD and set the cursor based on `chosenSize`
+  text[chosenSize] = CHARACTERS[characterIndex].character;
+  text[chosenSize + 1] = '\0';
+  lcd.print(CHARACTERS[characterIndex].character);
+  lcd.setCursor(chosenSize + 1, 0);  // +1 is used here to account for the `:` character
+  delay(JOYSTICK_TILT_DELAY);        // delay to prevent rapid scrolling from holding the joystick
 }
