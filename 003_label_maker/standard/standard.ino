@@ -34,7 +34,7 @@
 #define INIT_MSG "Initializing..."   // Text to display on startup
 #define MODE_NAME "   LABELMAKER"    // these are variables for the text which is displayed in different menus.
 #define PRINT_CONF "  PRINT LABEL?"  // try changing these, or making new ones and adding conditions for when they are used
-#define PRINTING "    PRINTING    "  // NOTE: this text must be LCD_WIDTH characters or LESS in order to fit on the screen correctly
+#define PRINTING "    PRINTING"      // NOTE: this text must be LCD_WIDTH characters or LESS in order to fit on the screen correctly
 
 // structs and enums
 struct Character {
@@ -268,7 +268,10 @@ void loop() {
       break;
 
     case Print:
-      lcd.print(PRINTING);  //update screen
+      // state does not need to be checked here because this case should execute only once
+      lcd.print(PRINTING);
+      lcd.setCursor(0, 1);  // move cursor to second the second line
+      lcd.print(text);      // output the text to print
 
       Serial.print(F("plot: `"));
       Serial.print(text);
@@ -276,7 +279,7 @@ void loop() {
 
       plotText();
       chosenSize = 0;
-      changeState(Edit);
+      changeState(MainMenu);
       break;
   }
 }
@@ -392,11 +395,17 @@ void plotText() {  // breaks up the input by character for plotting
     if (character.character == ' ') {  // if it's a space, add a space
       beginX += SPACE;
     } else {
+      lcd.setCursor(index, 1);  // set cursor at character to plot
+      lcd.blink();              // highlight character being plotted
       beginX += plotCharacter(character, beginX);
+      lcd.noBlink();
     }
   }
 
+  lcd.setCursor(chosenSize, 1);    // set cursor at end of text
+  lcd.blink();                     // highlight ending space
   plotLine(beginX + SPACE, 0, 0);  // move pen to start location for subsequent plotting
+  lcd.noBlink();
   resetMotors();
 }
 
