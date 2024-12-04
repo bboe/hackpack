@@ -11,7 +11,7 @@
 //////////////////////////////////////////////////
 //  PINS AND PARAMETERS  //
 //////////////////////////////////////////////////
-#define ALPHABET_SIZE (sizeof(ALPHABET) - 1)
+#define ALPHABET_SIZE (sizeof(CHARACTERS) / sizeof(struct Character))
 #define JOYSTICK_BUTTON_PIN 14       // Connect the joystick button to this pin
 #define JOYSTICK_TILT_DELAY 250      // Milliseconds to to delay after detecting joystick tilt
 #define JOYSTICK_TILT_THRESHOLD 200  // Adjust this threshold value based on your joystick
@@ -36,22 +36,12 @@
 #define PRINT_CONF "  PRINT LABEL?  "   // try changing these, or making new ones and adding conditions for when they are used
 #define PRINTING "    PRINTING    "     // NOTE: this text must be LCD_WIDTH characters or LESS in order to fit on the screen correctly
 
-// Create states to store what the current menu and joystick states are
-// Decoupling the state from other functions is good because it means the sensor / screen aren't hardcoded into every single action and can be handled at a higher level
-enum State { Edit,
-             MainMenu,
-             Print,
-             PrintConfirmation };
-
-
-
-// constants
-const char ALPHABET[] = "_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?,.#@";  //alphabet menu
-// multiplied by 5 because the scale variables are multiplied against coordinates later, while space is just fed in directly, so it needs to be scaled up by 5 to match
-const uint8_t VECTORS[63][VECTOR_POINTS] = {
-  //this alphabet set comes from a great plotter project you can find here:
+// structs and enums
+struct Character {
+  char character;
+  byte vectors[VECTOR_POINTS];
   /*
-    encoding works as follows:
+    vector encoding works as follows:
     ones     = y coordinate;
     tens     = x coordinate;
     hundreds = draw/don't draw ..
@@ -61,78 +51,85 @@ const uint8_t VECTORS[63][VECTOR_POINTS] = {
     Note: Values should not be prefixed with `0` because that would indicate they are octal-literals rather than decimal-literals:
     https://en.cppreference.com/w/cpp/language/integer_literal
   */
-  { 0, 124, 140, 32, 112, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*A*/
-  { 0, 104, 134, 132, 2, 142, 140, 100, 200, 200, 200, 200, 200, 200 },     /*B*/
-  { 41, 130, 110, 101, 103, 114, 134, 143, 200, 200, 200, 200, 200, 200 },  /*C*/
-  { 0, 104, 134, 143, 141, 130, 100, 200, 200, 200, 200, 200, 200, 200 },   /*D*/
-  { 40, 100, 104, 144, 22, 102, 200, 200, 200, 200, 200, 200, 200, 200 },   /*E*/
-  { 0, 104, 144, 22, 102, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*F*/
-  { 44, 104, 100, 140, 142, 122, 200, 200, 200, 200, 200, 200, 200, 200 },  /*G*/
-  { 0, 104, 2, 142, 44, 140, 200, 200, 200, 200, 200, 200, 200, 200 },      /*H*/
-  { 0, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*I*/
-  { 1, 110, 130, 141, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*J*/
-  { 0, 104, 2, 142, 140, 22, 144, 200, 200, 200, 200, 200, 200, 200 },      /*K*/
-  { 40, 100, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },  /*L*/
-  { 0, 104, 122, 144, 140, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*M*/
-  { 0, 104, 140, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*N*/
-  { 10, 101, 103, 114, 134, 143, 141, 130, 110, 200, 200, 200, 200, 200 },  /*O*/
-  { 0, 104, 144, 142, 102, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*P*/
-  { 0, 104, 144, 142, 120, 100, 22, 140, 200, 200, 200, 200, 200, 200 },    /*Q*/
-  { 0, 104, 144, 142, 102, 22, 140, 200, 200, 200, 200, 200, 200, 200 },    /*R*/
-  { 0, 140, 142, 102, 104, 144, 200, 200, 200, 200, 200, 200, 200, 200 },   /*S*/
-  { 20, 124, 4, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*T*/
-  { 4, 101, 110, 130, 141, 144, 200, 200, 200, 200, 200, 200, 200, 200 },   /*U*/
-  { 4, 120, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*V*/
-  { 4, 100, 122, 140, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*W*/
-  { 0, 144, 4, 140, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },     /*X*/
-  { 4, 122, 144, 22, 120, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*Y*/
-  { 4, 144, 100, 140, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*Z*/
-  { 0, 104, 144, 140, 100, 144, 200, 200, 200, 200, 200, 200, 200, 200 },   /*0*/
-  { 0, 140, 20, 124, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*1*/
-  { 4, 144, 142, 102, 100, 140, 200, 200, 200, 200, 200, 200, 200, 200 },   /*2*/
-  { 0, 140, 144, 104, 12, 142, 200, 200, 200, 200, 200, 200, 200, 200 },    /*3*/
-  { 20, 123, 42, 102, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*4*/
-  { 0, 140, 142, 102, 104, 144, 200, 200, 200, 200, 200, 200, 200, 200 },   /*5*/
-  { 2, 142, 140, 100, 104, 144, 200, 200, 200, 200, 200, 200, 200, 200 },   /*6*/
-  { 0, 144, 104, 12, 132, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*7*/
-  { 0, 140, 144, 104, 100, 2, 142, 200, 200, 200, 200, 200, 200, 200 },     /*8*/
-  { 0, 140, 144, 104, 102, 142, 200, 200, 200, 200, 200, 200, 200, 200 },   /*9*/
-  { 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 }, /* */
-  { 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 }, /* */
-  { 0, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*/*/
-  { 0, 102, 124, 142, 140, 42, 102, 4, 103, 44, 143, 200, 200, 200 },       /*Ä*/
-  { 0, 102, 142, 140, 100, 2, 14, 113, 34, 133, 200, 200, 200, 200 },       /*Ö*/
-  { 4, 100, 140, 144, 14, 113, 34, 133, 200, 200, 200, 200, 200, 200 },     /*Ü*/
-  { 0, 111, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*,*/
-  { 2, 142, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*-*/
-  { 0, 222, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*.*/
-  { 0, 222, 1, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },     /*!*/
-  { 20, 222, 21, 122, 142, 144, 104, 200, 200, 200, 200, 200, 200, 200 },   /*?*/
-  { 0, 104, 134, 133, 122, 142, 140, 110, 200, 200, 200, 200, 200, 200 },   /*ß*/
-  { 23, 124, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },  /*'*/
-  { 42, 120, 100, 101, 123, 124, 104, 103, 130, 140, 200, 200, 200, 200 },  /*&*/
-  { 2, 142, 20, 124, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*+*/
-  { 21, 222, 23, 222, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*:*/
-  { 10, 121, 22, 222, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*;*/
-  { 14, 113, 33, 134, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*"*/
-  { 10, 114, 34, 130, 41, 101, 3, 143, 200, 200, 200, 200, 200, 200 },      /*#*/
-  { 34, 124, 120, 130, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },  /*(*/
-  { 10, 120, 124, 114, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },  /*)*/
-  { 1, 141, 43, 103, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*=*/
-  { 31, 133, 113, 111, 141, 144, 104, 100, 140, 200, 200, 200, 200, 200 },  /*@*/
-  { 2, 142, 20, 124, 4, 140, 0, 144, 200, 200, 200, 200, 200, 200 },        /***/
-  { 0, 140, 144, 104, 100, 12, 113, 33, 132, 31, 111, 200, 200, 200 },      /*} Smiley*/
-  { 0, 140, 144, 104, 100, 13, 222, 33, 222, 32, 131, 111, 112, 132 },      /*~ Open mouth Smiley*/
-  { 20, 142, 143, 134, 123, 114, 103, 102, 120, 200, 200, 200, 200, 200 }   /*$ Heart*/
+};
+
+// Create states to store what the current menu and joystick states are
+// Decoupling the state from other functions is good because it means the sensor / screen aren't hardcoded into every single action and can be handled at a higher level
+enum State { Edit,
+             MainMenu,
+             Print,
+             PrintConfirmation };
+
+// constants
+const struct Character CHARACTERS[] = {
+  { SPACE_CHARACTER, { 200 } },
+  { 'A', { 0, 124, 140, 32, 112, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'B', { 0, 104, 134, 132, 2, 142, 140, 100, 200, 200, 200, 200, 200, 200 } },
+  { 'C', { 41, 130, 110, 101, 103, 114, 134, 143, 200, 200, 200, 200, 200, 200 } },
+  { 'D', { 0, 104, 134, 143, 141, 130, 100, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'E', { 40, 100, 104, 144, 22, 102, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'F', { 0, 104, 144, 22, 102, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'G', { 44, 104, 100, 140, 142, 122, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'H', { 0, 104, 2, 142, 44, 140, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'I', { 0, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'J', { 1, 110, 130, 141, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'K', { 0, 104, 2, 142, 140, 22, 144, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'L', { 40, 100, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'M', { 0, 104, 122, 144, 140, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'N', { 0, 104, 140, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'O', { 10, 101, 103, 114, 134, 143, 141, 130, 110, 200, 200, 200, 200, 200 } },
+  { 'P', { 0, 104, 144, 142, 102, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'Q', { 0, 104, 144, 142, 120, 100, 22, 140, 200, 200, 200, 200, 200, 200 } },
+  { 'R', { 0, 104, 144, 142, 102, 22, 140, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'S', { 0, 140, 142, 102, 104, 144, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'T', { 20, 124, 4, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'U', { 4, 101, 110, 130, 141, 144, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'V', { 4, 120, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'W', { 4, 100, 122, 140, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'X', { 0, 144, 4, 140, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'Y', { 4, 122, 144, 22, 120, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { 'Z', { 4, 144, 100, 140, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '0', { 0, 104, 144, 140, 100, 144, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '1', { 0, 140, 20, 124, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '2', { 4, 144, 142, 102, 100, 140, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '3', { 0, 140, 144, 104, 12, 142, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '4', { 20, 123, 42, 102, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '5', { 0, 140, 142, 102, 104, 144, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '6', { 2, 142, 140, 100, 104, 144, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '7', { 0, 144, 104, 12, 132, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '8', { 0, 140, 144, 104, 100, 2, 142, 200, 200, 200, 200, 200, 200, 200 } },
+  { '9', { 0, 140, 144, 104, 102, 142, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '/', { 0, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { ',', { 0, 111, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '-', { 2, 142, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '.', { 0, 222, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '!', { 0, 222, 1, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '?', { 20, 222, 21, 122, 142, 144, 104, 200, 200, 200, 200, 200, 200, 200 } },
+  { '\'', { 23, 124, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '&', { 42, 120, 100, 101, 123, 124, 104, 103, 130, 140, 200, 200, 200, 200 } },
+  { '+', { 2, 142, 20, 124, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { ':', { 21, 222, 23, 222, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { ';', { 10, 121, 22, 222, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '"', { 14, 113, 33, 134, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '#', { 10, 114, 34, 130, 41, 101, 3, 143, 200, 200, 200, 200, 200, 200 } },
+  { '(', { 34, 124, 120, 130, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { ')', { 10, 120, 124, 114, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '=', { 1, 141, 43, 103, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '@', { 31, 133, 113, 111, 141, 144, 104, 100, 140, 200, 200, 200, 200, 200 } },
+  { '*', { 2, 142, 20, 124, 4, 140, 0, 144, 200, 200, 200, 200, 200, 200 } },
+  { '}', { 0, 140, 144, 104, 100, 12, 113, 33, 132, 31, 111, 200, 200, 200 } },      // Smiley
+  { '~', { 0, 140, 144, 104, 100, 13, 222, 33, 222, 32, 131, 111, 112, 132 } },      // Open mouth Smiley
+  { '$', { 20, 142, 143, 134, 123, 114, 103, 102, 120, 200, 200, 200, 200, 200 } },  // Heart
 };
 
 // menu variables
-int currentCharacter = 0;  //keep track of which character is currently displayed under the cursor
-int cursorPosition = 0;    //keeps track of the cursor position (left to right) on the screen
-byte cursorIndex = 0;      // keeps track of the cursor index (left to right) on the screen
+byte characterIndex = 0;               // keep track of which character is currently displayed under the cursor
+byte chosenCharacters[LCD_WIDTH - 1];  // keep track of which characters are selected
+byte chosenSize = 0;                   // keep track of how many characters have been selected
+byte cursorIndex = 0;                  // keeps track of the cursor index (left to right) on the screen
+char text[LCD_WIDTH];                  // buffer to hold the text we're plotting, which requires an extra char for '\0'
 State currentState = MainMenu;
 State prevState = Print;
-String text;  // Store the label text
 
 // hardware variables
 bool pPenOnPaper = false;  // pen on paper in previous cycle
@@ -235,62 +232,50 @@ void loop() {
       lcd.setCursor(0, 0);
       lcd.print(":");
       lcd.setCursor(1, 0);
-      lcd.print(text);
+      lcd.print(setText());
 
       // Check if the joystick is moved up (previous letter) or down (next letter)
 
       if (joystickUp) {  //UP (previous character)
-        Serial.println(currentCharacter);
-        if (currentCharacter > 0) {
-          currentCharacter--;
+        if (characterIndex > 0) {
+          characterIndex--;
         } else {
-          currentCharacter = ALPHABET_SIZE - 1;  // move to the end of the available characters
+          characterIndex = ALPHABET_SIZE - 1;  // move to the end of the available characters
         }
-        lcd.print(ALPHABET[currentCharacter]);
-        delay(JOYSTICK_TILT_DELAY);  // Delay to prevent rapid scrolling
-      } else if (joystickDown) {     //DOWN (next character)
-        Serial.println(currentCharacter);
-        currentCharacter = (currentCharacter + 1) % ALPHABET_SIZE;  // `% ALPHABET_SIZE` enables moving back to the first character when at the end
-        lcd.print(ALPHABET[currentCharacter]);
+        lcd.print(CHARACTERS[characterIndex].character);
+        delay(JOYSTICK_TILT_DELAY);                             // Delay to prevent rapid scrolling
+      } else if (joystickDown) {                                //DOWN (next character)
+        characterIndex = (characterIndex + 1) % ALPHABET_SIZE;  // `% ALPHABET_SIZE` enables moving back to the first character when at the end
+        lcd.print(CHARACTERS[characterIndex].character);
         delay(JOYSTICK_TILT_DELAY);  // Delay to prevent rapid scrolling
       } else {
         if (millis() % 600 < 450) {
-          lcd.print(ALPHABET[currentCharacter]);
+          lcd.print(CHARACTERS[characterIndex].character);
         } else {
           lcd.print(" ");
         }
       }
 
       // Check if the joystick is moved left (backspace) or right (add space)
-      if (joystickLeft) {
-        // LEFT (backspace)
-        if (text.length() > 0) {
-          text.remove(text.length() - 1);
+      if (joystickLeft) {  // LEFT (backspace)
+        if (chosenSize > 0) {
+          --chosenSize;
           lcd.setCursor(0, 0);
           lcd.print(MENU_CLEAR);  //clear and reprint the string so characters dont hang
           lcd.setCursor(1, 0);
-          lcd.print(text);
+          lcd.print(setText());
         }
-        delay(JOYSTICK_TILT_DELAY);  // Delay to prevent rapid multiple presses
-
-      } else if (joystickRight) {  //RIGHT adds a space or character to the label
-        if (currentCharacter == 0) {
-          text += ' ';  //add a space if the character is _
-        } else {
-          text += ALPHABET[currentCharacter];  //add the current character to the text
-          currentCharacter = 0;
-        }
+        delay(JOYSTICK_TILT_DELAY);                       // Delay to prevent rapid multiple presses
+      } else if (joystickRight) {                         //RIGHT adds a space or character to the label
+        chosenCharacters[chosenSize++] = characterIndex;  //add the current character to the text
+        characterIndex = 0;
         delay(JOYSTICK_TILT_DELAY);  // Delay to prevent rapid multiple presses
       }
 
       if (joystickButton.isPressed()) {
         // Single click: Add character and reset alphabet scroll
-        if (currentCharacter == 0) {
-          text += ' ';  //add a space if the character is _
-        } else {
-          text += ALPHABET[currentCharacter];  //add the current character to the text
-          currentCharacter = 0;                // reset for the next character
-        }
+        chosenCharacters[chosenSize++] = characterIndex;  //add the current character to the text
+        characterIndex = 0;
         lcd.clear();
         currentState = PrintConfirmation;
         prevState = Edit;
@@ -351,13 +336,13 @@ void loop() {
         lcd.print(PRINTING);  //update screen
       }
 
-      plotText(text, positionX, positionY);
+      plotText(positionX, positionY);
 
       plotLine(positionX + SPACE, 0, 0);  // move to new line
       positionX = 0;
       positionY = 0;
 
-      text = "";
+      chosenSize = 0;
       yStepper.step(-RESET_Y_STEPS);
       releaseMotors();
       lcd.clear();
@@ -371,103 +356,16 @@ void loop() {
 ////////////////////////////////////////////////
 //  HELPER FUNCTIONS  //
 ////////////////////////////////////////////////
-void plotCharacter(char c, int x, int y) {  //this receives info from plotText for which character to plot,
+void plotCharacter(struct Character &character, int x, int y) {  //this receives info from plotText for which character to plot,
   // first it does some logic to make specific tweaks depending on the character, so some characters need more space, others less,
   // and some we even want to swap (in the case of space, we're swapping _ (underscore) and space so that we have something to show on the screen)
 
   // and once we've got it all worked out right, this function passes the coordinates from that character though the plotLine function to draw it
 
-  Serial.print(uint8_t(c));  //print the received character to monitor
-  Serial.print(">");
-
-  //the following if statements handle character specific changes by shifting / swapping prior to drawing
-  uint8_t character = 38;
-  if (uint8_t(c) > 64 and uint8_t(c) < 91) {  //A...Z
-    character = uint8_t(c) - 65;
-  }
-  if (uint8_t(c) > 96 and uint8_t(c) < 123) {  //A...Z
-    character = uint8_t(c) - 97;
-  }
-  if (uint8_t(c) > 47 and uint8_t(c) < 58) {  //0...9
-    character = uint8_t(c) - 22;
-  }
-  if (uint8_t(c) == 164 || uint8_t(c) == 132) {  //ä,Ä
-    character = 39;
-  }
-  if (uint8_t(c) == 182 || uint8_t(c) == 150) {  //ö,Ö
-    character = 40;
-  }
-  if (uint8_t(c) == 188 || uint8_t(c) == 156) {  //ü,Ü
-    character = 41;
-  }
-  if (uint8_t(c) == 44) {  // ,
-    character = 42;
-  }
-  if (uint8_t(c) == 45) {  // -
-    character = 43;
-  }
-  if (uint8_t(c) == 46) {  // .
-    character = 44;
-  }
-  if (uint8_t(c) == 33) {  // !
-    character = 45;
-  }
-  if (uint8_t(c) == 63) {  // ?
-    character = 46;
-  }
-
-  if (uint8_t(c) == 123) { /*{ ß*/
-    character = 47;
-  }
-  if (uint8_t(c) == 39) { /*'*/
-    character = 48;
-  }
-  if (uint8_t(c) == 38) { /*&*/
-    character = 49;
-  }
-  if (uint8_t(c) == 43) { /*+*/
-    character = 50;
-  }
-  if (uint8_t(c) == 58) { /*:*/
-    character = 51;
-  }
-  if (uint8_t(c) == 59) { /*;*/
-    character = 52;
-  }
-  if (uint8_t(c) == 34) { /*"*/
-    character = 53;
-  }
-  if (uint8_t(c) == 35) { /*#*/
-    character = 54;
-  }
-  if (uint8_t(c) == 40) { /*(*/
-    character = 55;
-  }
-  if (uint8_t(c) == 41) { /*)*/
-    character = 56;
-  }
-  if (uint8_t(c) == 61) { /*=*/
-    character = 57;
-  }
-  if (uint8_t(c) == 64) { /*@*/
-    character = 58;
-  }
-  if (uint8_t(c) == 42) { /***/
-    character = 59;
-  }
-  if (uint8_t(c) == 125) { /*} Smiley*/
-    character = 60;
-  }
-  if (uint8_t(c) == 126) { /*~ Open mouth Smiley*/
-    character = 61;
-  }
-  if (uint8_t(c) == 36) { /*$ Heart*/
-    character = 62;
-  }
   Serial.print("letter: ");
-  Serial.println(c);
+  Serial.println(character.character);
   for (int i = 0; i < VECTOR_POINTS; i++) {  // go through each vector of the character
-    uint8_t vector = VECTORS[character][i];
+    byte vector = character.vectors[i];
     if (vector == 200) {  // no more vectors in this array
       break;
     }
@@ -549,27 +447,27 @@ void plotLine(int newX, int newY, bool drawing) {
   positionY = newY;  // store new position
 }
 
-void plotText(String &str, int x, int y) {  //takes in our label as a string, and breaks it up by character for plotting
+void plotText(int x, int y) {  //takes in our label as a string, and breaks it up by character for plotting
   int beginX = 0;
   Serial.println("plot string");
-  Serial.println(str);
-  for (int i = 0; i < str.length(); i++) {  //for each letter in the string (expressed as "while i is less than string length")
-    char c = char(str.charAt(i));           //store the next character to plot on it's own
-    if (byte(c) != 195) {
-      if (c == ' ') {  //if it's a space, add a space.
-        beginX += SPACE;
-      } else {
-        plotCharacter(c, x + beginX, y);
-        beginX += SPACE;  //SCALE_X is multiplied by 4 here to convert it to steps (because it normally get's multiplied by a coordinate with a max of 4)
-        if (c == 'I' || c == 'i') beginX -= (SCALE_X * 4) / 1.1;
-        if (c == ',') beginX -= (SCALE_X * 4) / 1.2;
+  Serial.println(setText());
+  for (byte index = 0; index < chosenSize; ++index) {
+    struct Character character = CHARACTERS[chosenCharacters[index]];
+    if (character.character == SPACE_CHARACTER) {  //if it's a space, add a space.
+      beginX += SPACE;
+    } else {
+      plotCharacter(character, x + beginX, y);
+      beginX += SPACE;  //SCALE_X is multiplied by 4 here to convert it to steps (because it normally get's multiplied by a coordinate with a max of 4)
+      if (character.character == 'I') {
+        beginX -= (SCALE_X * 4) / 1.1;
+      } else if (character.character == ',') {
+        beginX -= (SCALE_X * 4) / 1.2;
       }
     }
   }
   Serial.println();
   releaseMotors();
 }
-
 
 void releaseMotors() {
   const int xPins[4] = { 6, 8, 7, 9 };  // pins for x-motor coils
@@ -591,4 +489,16 @@ void setPen(bool penOnPaper) {  // used to handle lifting or lowering the pen on
   servo.write(angle);                                 // actuate the servo to either position
   if (penOnPaper != pPenOnPaper) delay(SERVO_DELAY);  // give the servo time to move before jumping into the next action
   pPenOnPaper = penOnPaper;                           // store the previous state
+}
+
+char *setText() {
+  // updates the global text array to contain the selected text
+  // this array is only used for serial output and when reprinting all the text to the LCD
+  // a pointer to the text is returned for convenience
+  for (byte index = 0; index < chosenSize; ++index) {
+    char character = CHARACTERS[chosenCharacters[index]].character;
+    text[index] = character == SPACE_CHARACTER ? ' ' : character;
+  }
+  text[chosenSize] = '\0';
+  return text;
 }
