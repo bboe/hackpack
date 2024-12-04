@@ -30,11 +30,10 @@
 #define STEPPER_STEPS_PER_REVOLUTION 2048
 #define VECTOR_POINTS 14
 
-#define INIT_MSG "Initializing..."      // Text to display on startup
-#define MENU_CLEAR ":                "  // this one clears the menu for editing
-#define MODE_NAME "   LABELMAKER   "    // these are variables for the text which is displayed in different menus.
-#define PRINT_CONF "  PRINT LABEL?  "   // try changing these, or making new ones and adding conditions for when they are used
-#define PRINTING "    PRINTING    "     // NOTE: this text must be LCD_WIDTH characters or LESS in order to fit on the screen correctly
+#define INIT_MSG "Initializing..."     // Text to display on startup
+#define MODE_NAME "   LABELMAKER   "   // these are variables for the text which is displayed in different menus.
+#define PRINT_CONF "  PRINT LABEL?  "  // try changing these, or making new ones and adding conditions for when they are used
+#define PRINTING "    PRINTING    "    // NOTE: this text must be LCD_WIDTH characters or LESS in order to fit on the screen correctly
 
 // structs and enums
 struct Character {
@@ -128,8 +127,8 @@ byte chosenCharacters[LCD_WIDTH - 1];  // keep track of which characters are sel
 byte chosenSize = 0;                   // keep track of how many characters have been selected
 byte cursorIndex = 0;                  // keeps track of the cursor index (left to right) on the screen
 char text[LCD_WIDTH];                  // buffer to hold the text we're plotting, which requires an extra char for '\0'
-State currentState = MainMenu;
-State prevState = Print;
+State currentState = Print;            // The initial value needs to be anything other than `MainMenu`
+State previousState;
 
 // hardware variables
 bool pPenOnPaper = false;  // pen on paper in previous cycle
@@ -176,7 +175,7 @@ void setup() {
   positionX = 0;
 
   releaseMotors();
-  lcd.clear();
+  changeState(MainMenu);
 }
 
 
@@ -196,38 +195,31 @@ void loop() {
   switch (currentState) {  //state machine that determines what to do with the input controls based on what mode the device is in
 
     case MainMenu:
-      {
-        if (prevState != MainMenu) {
-          lcd.clear();
-          lcd.setCursor(0, 0);
-          lcd.print(MODE_NAME);
-          lcd.setCursor(0, 1);
-          lcd.print("      START     ");
-          cursorIndex = 5;
-          prevState = MainMenu;
-        }
+      if (previousState != MainMenu) {
+        previousState = MainMenu;
+        lcd.print(MODE_NAME);
+        lcd.setCursor(0, 1);
+        lcd.print("      START     ");
+        cursorIndex = 5;
+      }
 
-        lcd.setCursor(cursorIndex, 1);
+      lcd.setCursor(cursorIndex, 1);
 
-        if (millis() % 600 < 400) {  // Blink every 500 ms
-          lcd.print(">");
-        } else {
-          lcd.print(" ");
-        }
+      if (millis() % 600 < 400) {  // Blink every 500 ms
+        lcd.print(">");
+      } else {
+        lcd.print(" ");
+      }
 
-        if (joystickButton.isPressed()) {  //handles clicking options in text size setting
-          lcd.clear();
-          currentState = Edit;
-          prevState = MainMenu;
-        }
+      if (joystickButton.isPressed()) {  //handles clicking options in text size setting
+        changeState(Edit);
       }
       break;
 
-    case Edit:  //in the editing mode, joystick directional input adds and removes characters from the string, while up and down changes characters
+    case Edit:  //in edit mode, joystick directional input adds and removes characters from the string, while up and down changes characters
       //pressing the joystick button will switch the device into the Print Confirmation mode
-      if (prevState != Edit) {
-        lcd.clear();
-        prevState = Edit;
+      if (previousState != Edit) {
+        previousState = Edit;
       }
       lcd.setCursor(0, 0);
       lcd.print(":");
@@ -260,10 +252,7 @@ void loop() {
       if (joystickLeft) {  // LEFT (backspace)
         if (chosenSize > 0) {
           --chosenSize;
-          lcd.setCursor(0, 0);
-          lcd.print(MENU_CLEAR);  //clear and reprint the string so characters dont hang
-          lcd.setCursor(1, 0);
-          lcd.print(setText());
+          clearDisplay(chosenSize + 1);  // don't clear characters we want to keep to prevent flicker
         }
         delay(JOYSTICK_TILT_DELAY);                       // Delay to prevent rapid multiple presses
       } else if (joystickRight) {                         //RIGHT adds a space or character to the label
@@ -276,21 +265,18 @@ void loop() {
         // Single click: Add character and reset alphabet scroll
         chosenCharacters[chosenSize++] = characterIndex;  //add the current character to the text
         characterIndex = 0;
-        lcd.clear();
-        currentState = PrintConfirmation;
-        prevState = Edit;
+        changeState(PrintConfirmation);
       }
       break;
 
     case PrintConfirmation:
-      if (prevState == Edit) {
-        lcd.setCursor(0, 0);    //move cursor to the first line
+      if (previousState != PrintConfirmation) {
+        previousState = PrintConfirmation;
         lcd.print(PRINT_CONF);  //print menu text
         lcd.setCursor(0, 1);    // move cursor to the second line
         lcd.print("   YES     NO   ");
         lcd.setCursor(2, 1);
         cursorIndex = 2;
-        prevState = PrintConfirmation;
       }
 
       //the following two if statements help move the blinking cursor from one option to the other.
@@ -317,24 +303,12 @@ void loop() {
       }
 
       if (joystickButton.isPressed()) {  //handles clicking options in print confirmation
-        if (cursorIndex == 2) {          //proceed to printing if clicking yes
-          lcd.clear();
-          currentState = Print;
-          prevState = PrintConfirmation;
-
-        } else if (cursorIndex == 10) {  //return to editing if you click no
-          lcd.clear();
-          currentState = Edit;
-          prevState = PrintConfirmation;
-        }
+        changeState(cursorIndex == 2 ? Print : Edit);
       }
       break;
 
     case Print:
-      if (prevState == PrintConfirmation) {
-        lcd.setCursor(0, 0);
-        lcd.print(PRINTING);  //update screen
-      }
+      lcd.print(PRINTING);  //update screen
 
       plotText(positionX, positionY);
 
@@ -345,9 +319,7 @@ void loop() {
       chosenSize = 0;
       yStepper.step(-RESET_Y_STEPS);
       releaseMotors();
-      lcd.clear();
-      currentState = Edit;
-      prevState = Print;
+      changeState(Edit);
       break;
   }
 }
@@ -356,6 +328,27 @@ void loop() {
 ////////////////////////////////////////////////
 //  HELPER FUNCTIONS  //
 ////////////////////////////////////////////////
+void changeState(State newState) {  // transition between program states and clear the display
+  Serial.print("Changing state ");
+  Serial.print(currentState);
+  Serial.print("->");
+  Serial.println(newState);
+  previousState = currentState;
+  currentState = newState;
+  clearDisplay(0);
+}
+
+void clearDisplay(byte columnStart) {
+  // Clear the LCD quicker than `lcd.clear` because it doesn't delay for 2 seconds after
+  // Iterate over columns, rather than directly print LCD_WIDTH spaces, to trade program space (more code) for less global variable space
+  for (byte row = 0; row < 2; ++row) {
+    lcd.setCursor(columnStart, row);
+    for (byte column = columnStart; column < LCD_WIDTH; ++column)
+      lcd.print(" ");
+  }
+  lcd.setCursor(0, 0);
+}
+
 void plotCharacter(struct Character &character, int x, int y) {  //this receives info from plotText for which character to plot,
   // first it does some logic to make specific tweaks depending on the character, so some characters need more space, others less,
   // and some we even want to swap (in the case of space, we're swapping _ (underscore) and space so that we have something to show on the screen)
