@@ -21,7 +21,7 @@
 #define RESET_Y_STEPS 2500  // The number of steps needed to move the pen holder all the way to the bottom
 #define SCALE_X 230         // these are multiplied against the stored coordinate (between 0 and 4) to get the actual number of steps moved
 #define SCALE_Y 230         // for example, if this is 230(default), then 230(scale) x 4(max coordinate) = 920 (motor steps)
-#define SERVO_DELAY 50      // Milliseconds to delay after moving the servo
+#define SERVO_DELAY 150     // Milliseconds to delay after moving the servo
 #define SERVO_OFF_PAPER_ANGLE 25
 #define SERVO_ON_PAPER_ANGLE 80
 #define SERVO_PIN 13
@@ -131,8 +131,7 @@ State currentState = Print;            // The initial value needs to be anything
 State previousState;
 
 // hardware variables
-bool pPenOnPaper = false;  // pen on paper in previous cycle
-int angle = 30;            // the current angle of servo motor
+bool penOnPaper = false;  // current state of pen on paper
 int positionX = 0;
 int positionY = 0;
 
@@ -160,10 +159,8 @@ void setup() {
 
   joystickButton.setDebounceTime(50);  //debounce prevents the joystick button from triggering twice when clicked
 
-  servo.attach(SERVO_PIN);  // attaches the servo on pin 9 to the servo object
-  servo.write(SERVO_OFF_PAPER_ANGLE);
-
-  setPen(false);  //servo to tape surface so pen can be inserted
+  servo.attach(SERVO_PIN);             // attaches the servo on pin 9 to the servo object
+  servo.write(SERVO_OFF_PAPER_ANGLE);  // ensure that the servo is lifting the pen carriage away from the tape
 
   // set the speed of the motors
   yStepper.setSpeed(12);  // set first stepper speed (these should stay the same)
@@ -364,7 +361,6 @@ void plotCharacter(struct Character &character, int x, int y) {  //this receives
     }
     if (vector == 222) {  // plot single point
       setPen(true);
-      delay(SERVO_DELAY);
       setPen(false);
     } else {
       int draw = 0;
@@ -473,15 +469,12 @@ void releaseMotors() {
   setPen(false);
 }
 
-void setPen(bool penOnPaper) {  // used to handle lifting or lowering the pen on to the tape
-  if (penOnPaper) {             // if the pen is already up, put it down
-    angle = SERVO_ON_PAPER_ANGLE;
-  } else {  //if down, then lift up.
-    angle = SERVO_OFF_PAPER_ANGLE;
+void setPen(bool toPaper) {  // used to handle lifting or lowering the pen on to the tape
+  if (toPaper != penOnPaper) {
+    servo.write(toPaper ? SERVO_ON_PAPER_ANGLE : SERVO_OFF_PAPER_ANGLE);  // actuate the servo to either position
+    delay(SERVO_DELAY);                                                   // gives the servo time to move before jumping into the next action
+    penOnPaper = toPaper;                                                 // store the previous state
   }
-  servo.write(angle);                                 // actuate the servo to either position
-  if (penOnPaper != pPenOnPaper) delay(SERVO_DELAY);  // give the servo time to move before jumping into the next action
-  pPenOnPaper = penOnPaper;                           // store the previous state
 }
 
 char *setText() {
