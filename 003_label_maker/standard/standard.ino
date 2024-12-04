@@ -334,15 +334,10 @@ void clearDisplay(byte columnStart) {
   lcd.setCursor(0, 0);
 }
 
-void plotCharacter(struct Character &character, int beginX) {  //this receives info from plotText for which character to plot,
-  // first it does some logic to make specific tweaks depending on the character, so some characters need more space, others less,
-  // and some we even want to swap (in the case of space, we're swapping _ (underscore) and space so that we have something to show on the screen)
-
-  // and once we've got it all worked out right, this function passes the coordinates from that character though the plotLine function to draw it
-
-  Serial.print("letter: ");
+int plotCharacter(struct Character &character, int beginX) {  // this function passes the vectors from a character though the plotLine function to draw it
+  Serial.print("character: ");
   Serial.println(character.character);
-  for (int i = 0; i < VECTOR_POINTS; i++) {  // go through each vector of the character
+  for (int i = 0; i < VECTOR_POINTS; i++) {  // iterate through each vector of the character
     byte vector = character.vectors[i];
     if (vector == 200) {  // no more vectors in this array
       break;
@@ -363,21 +358,23 @@ void plotCharacter(struct Character &character, int beginX) {  //this receives i
       int endY = vectorY * SCALE_Y * 3.5;  // we multiply by 3.5 here to equalize the Y output to match X, because the Y lead screw
                                            // covers less distance per-step than the X motor wheel (about 3.5 times less haha)
 
-      Serial.print("Scale: ");
-      Serial.print(SCALE_X);
-      Serial.print("  ");
-      Serial.print("X Goal: ");
+      Serial.print("Goal: (");
       Serial.print(endX);
-      Serial.print("  ");
-      Serial.print("Y Goal: ");
+      Serial.print(", ");
       Serial.print(endY);
-      Serial.print("  ");
-      Serial.print("Draw: ");
+      Serial.print(") Draw: ");
       Serial.println(draw);
 
       plotLine(endX, endY, draw);
     }
   }
+  int ending_space = SPACE;
+  if (character.character == 'I') {
+    ending_space -= (SCALE_X * 4) / 1.1;
+  } else if (character.character == ',') {
+    ending_space -= (SCALE_X * 4) / 1.2;
+  }
+  return ending_space;
 }
 
 void plotLine(int newX, int newY, bool drawing) {
@@ -424,25 +421,20 @@ void plotLine(int newX, int newY, bool drawing) {
   positionY = newY;  // store new position
 }
 
-void plotText() {  // takes in our label as a string, and breaks it up by character for plotting
+void plotText() {  // breaks up the input by character for plotting
+  Serial.print("plot: `");
+  Serial.print(setText());
+  Serial.println("`");
+
   int beginX = 0;  // the x coordinate that the next character should start from which may differ from where `positionX` is
-  Serial.println("plot string");
-  Serial.println(setText());
   for (byte index = 0; index < chosenSize; ++index) {
     struct Character character = CHARACTERS[chosenCharacters[index]];
     if (character.character == SPACE_CHARACTER) {  // if it's a space, add a space.
       beginX += SPACE;
     } else {
-      plotCharacter(character, beginX);
-      beginX += SPACE;  //SCALE_X is multiplied by 4 here to convert it to steps (because it normally get's multiplied by a coordinate with a max of 4)
-      if (character.character == 'I') {
-        beginX -= (SCALE_X * 4) / 1.1;
-      } else if (character.character == ',') {
-        beginX -= (SCALE_X * 4) / 1.2;
-      }
+      beginX += plotCharacter(character, beginX);
     }
   }
-  Serial.println();
 
   plotLine(beginX + SPACE, 0, 0);  // move pen to start location for subsequent plotting
   resetMotors();
