@@ -251,7 +251,9 @@ void loop() {
 
       if (joystickButton.isPressed()) {
         // Single click: Add character and reset alphabet scroll
-        chosenCharacters[chosenSize++] = characterIndex;  //add the current character to the text
+        if (characterIndex != 0) {                          // Only add non-space characters
+          chosenCharacters[chosenSize++] = characterIndex;  //add the current character to the text
+        }
         characterIndex = 0;
         changeState(PrintConfirmation);
       }
