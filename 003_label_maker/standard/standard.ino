@@ -31,10 +31,10 @@
 #define VECTOR_END 192
 #define VECTOR_POINTS 14
 
-#define INIT_MSG "Initializing..."     // Text to display on startup
-#define MODE_NAME "   LABELMAKER"      // these are variables for the text which is displayed in different menus.
-#define PRINT_CONF "  PRINT LABEL?  "  // try changing these, or making new ones and adding conditions for when they are used
-#define PRINTING "    PRINTING    "    // NOTE: this text must be LCD_WIDTH characters or LESS in order to fit on the screen correctly
+#define INIT_MSG "Initializing..."   // Text to display on startup
+#define MODE_NAME "   LABELMAKER"    // these are variables for the text which is displayed in different menus.
+#define PRINT_CONF "  PRINT LABEL?"  // try changing these, or making new ones and adding conditions for when they are used
+#define PRINTING "    PRINTING    "  // NOTE: this text must be LCD_WIDTH characters or LESS in order to fit on the screen correctly
 
 // structs and enums
 struct Character {
@@ -248,33 +248,21 @@ void loop() {
       if (previousState != PrintConfirmation) {
         previousState = PrintConfirmation;
         confirmAction = false;  // default confirmation to no
-        lcd.print(PRINT_CONF);  //print menu text
-        lcd.setCursor(0, 1);    // move cursor to the second line
-        lcd.print("   YES     NO   ");
-      }
-
-      //the following two if statements help move the blinking cursor from one option to the other.
-      if (joystickLeft) {  //left
+        lcd.print(PRINT_CONF);  // print menu text
+        lcd.setCursor(3, 1);    // move cursor to the second line, 4th column
+        lcd.print("YES     NO");
+        lcd.setCursor(10, 1);  // position cursor just before `NO`
+        lcd.blink();
+      } else if (joystickLeft) {  // joystick left (select yes)
         confirmAction = true;
-        lcd.setCursor(0, 1);
-        lcd.print("   YES     NO   ");
+        lcd.setCursor(2, 1);  // position cursor just before 'YES'
         delay(JOYSTICK_TILT_DELAY);
-      } else if (joystickRight) {  //right
+      } else if (joystickRight) {  // joystick right (select no)
         confirmAction = false;
-        lcd.setCursor(0, 1);
-        lcd.print("   YES     NO   ");
+        lcd.setCursor(10, 1);  // position cursor just before `NO`
         delay(JOYSTICK_TILT_DELAY);
-      }
-
-      lcd.setCursor(confirmAction ? 2 : 10, 1);
-
-      if (millis() % 600 < 400) {  // Blink every 500 ms
-        lcd.print(">");
-      } else {
-        lcd.print(" ");
-      }
-
-      if (joystickButton.isPressed()) {  //handles clicking options in print confirmation
+      } else if (joystickButton.isPressed()) {  // joystick click (advance based on selection)
+        lcd.noBlink();
         changeState(confirmAction ? Print : Edit);
       }
       break;
