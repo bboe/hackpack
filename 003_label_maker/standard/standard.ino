@@ -151,20 +151,20 @@ Stepper yStepper(STEPPER_STEPS_PER_REVOLUTION, 2, 4, 3, 5);
 void setup() {
   Serial.begin(9600);  // initialize serial console so we can output messages
 
-  Serial.println("initializing LCD");
+  Serial.println(F("initializing LCD"));
   lcd.init();
   lcd.backlight();
   lcd.setCursor(0, 0);
-  lcd.print(INIT_MSG);  // print start up message
+  lcd.print(F(INIT_MSG));  // print start up message
 
-  Serial.println("initializing hardware");
+  Serial.println(F("initializing hardware"));
   joystickButton.setDebounceTime(50);  // debounce prevents the joystick button from triggering twice when clicked
   servo.attach(SERVO_PIN);             // attaches the servo pin to the servo object
   servo.write(SERVO_OFF_PAPER_ANGLE);  // ensure that the servo is lifting the pen carriage away from the tape
   xStepper.setSpeed(10);               // set x stepper speed (these should stay the same)
   yStepper.setSpeed(12);               // set y stepper speed (^ weird stuff happens when you push it too fast)
 
-  Serial.println("resetting motors");
+  Serial.println(F("resetting motors"));
   resetMotors();
 
   updateChosenCharacter();  // Initialize the first space character
@@ -189,9 +189,9 @@ void loop() {
     case MainMenu:
       if (previousState != MainMenu) {
         previousState = MainMenu;
-        lcd.print(MODE_NAME);
+        lcd.print(F(MODE_NAME));
         lcd.setCursor(5, 1);
-        lcd.print(">START");
+        lcd.print(F(">START"));
         lcd.setCursor(5, 1);                    // position the cursor at `>`
         lcd.blink();                            // blink the `>` at the cursor
       } else if (joystickButton.isPressed()) {  // handles clicking options in text size setting
@@ -205,7 +205,7 @@ void loop() {
       // pressing the joystick button will switch the device into the Print Confirmation mode
       if (previousState == PrintConfirmation) {  // when coming back from a "no" confirmation, re-print the selected text
         previousState = Edit;
-        lcd.print(":");
+        lcd.print(F(":"));
         lcd.print(text);                                // output the existing selected characters
         lcd.setCursor(chosenSize--, 0);                 // set the cursor on the last character, and decrease `chosenSize`
         characterIndex = chosenCharacters[chosenSize];  // set index to that of the last character
@@ -213,7 +213,7 @@ void loop() {
         lcd.blink();
       } else if (previousState != Edit) {
         previousState = Edit;
-        lcd.print(":");
+        lcd.print(F(":"));
         lcd.setCursor(1, 0);
         lcd.blink();
       } else if (joystickDown) {                                // joystick down (next character)
@@ -251,10 +251,10 @@ void loop() {
     case PrintConfirmation:
       if (previousState != PrintConfirmation) {
         previousState = PrintConfirmation;
-        confirmAction = false;  // default confirmation to no
-        lcd.print(PRINT_CONF);  // print menu text
-        lcd.setCursor(3, 1);    // move cursor to the second line, 4th column
-        lcd.print("YES     NO");
+        confirmAction = false;     // default confirmation to no
+        lcd.print(F(PRINT_CONF));  // print menu text
+        lcd.setCursor(3, 1);       // move cursor to the second line, 4th column
+        lcd.print(F("YES     NO"));
         lcd.setCursor(10, 1);  // position cursor just before `NO`
         lcd.blink();
       } else if (joystickLeft) {  // joystick left (select yes)
@@ -273,7 +273,7 @@ void loop() {
 
     case Print:
       // state does not need to be checked here because this case should execute only once
-      lcd.print(PRINTING);
+      lcd.print(F(PRINTING));
       lcd.setCursor(0, 1);  // move cursor to second the second line
       lcd.print(text);      // output the text to print
 
@@ -293,9 +293,9 @@ void loop() {
 //  HELPER FUNCTIONS  //
 ////////////////////////////////////////////////
 void changeState(State newState) {  // transition between program states and clear the display
-  Serial.print("Changing state ");
+  Serial.print(F("Changing state "));
   Serial.print(currentState);
-  Serial.print("->");
+  Serial.print(F("->"));
   Serial.println(newState);
   previousState = currentState;
   currentState = newState;
@@ -308,13 +308,13 @@ void clearDisplay(byte columnStart) {
   for (byte row = 0; row < 2; ++row) {
     lcd.setCursor(columnStart, row);
     for (byte column = columnStart; column < LCD_WIDTH; ++column)
-      lcd.print(" ");
+      lcd.print(F(" "));
   }
   lcd.setCursor(0, 0);
 }
 
 int plotCharacter(struct Character &character, int beginX) {  // this function passes the vectors from a character though the plotLine function to draw it
-  Serial.print("character: ");
+  Serial.print(F("character: "));
   Serial.println(character.character);
   int endSpace = SPACE;
   for (int i = 0; i < VECTOR_POINTS; i++) {  // iterate through each vector of the character
@@ -335,11 +335,11 @@ int plotCharacter(struct Character &character, int beginX) {  // this function p
     int endY = vectorY * SCALE_Y * 3.5;  // we multiply by 3.5 here to equalize the Y output to match X, because the Y lead screw
                                          // covers less distance per-step than the X motor wheel (about 3.5 times less haha)
 
-    Serial.print("Goal: (");
+    Serial.print(F("Goal: ("));
     Serial.print(endX);
-    Serial.print(", ");
+    Serial.print(F(", "));
     Serial.print(endY);
-    Serial.print(") Draw: ");
+    Serial.print(F(") Draw: "));
     Serial.println(draw);
 
     plotLine(endX, endY, draw);
