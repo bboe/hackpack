@@ -62,7 +62,7 @@ enum State { Edit,
              PrintConfirmation };
 
 // constants
-const struct Character CHARACTERS[] = {
+const PROGMEM struct Character CHARACTERS[] = {
   { ' ', { VECTOR_END } },
   { 'A', { 0, 124, 140, 32, 112, VECTOR_END } },
   { 'B', { 0, 104, 134, 132, 2, 142, 140, 100, VECTOR_END } },
@@ -131,6 +131,7 @@ byte chosenSize = 0;                   // keep track of how many characters have
 char text[LCD_WIDTH];                  // buffer to hold the text we're plotting, which requires an extra char for '\0'
 State currentState = Print;            // The initial value needs to be anything other than `MainMenu`
 State previousState;
+struct Character tmpCharacter;  // This character is used when we need to copy a character from PROGMEM
 
 // hardware variables
 bool penOnPaper = false;  // current state of pen on paper
@@ -394,13 +395,14 @@ void plotLine(int newX, int newY, bool drawing) {
 void plotText() {  // breaks up the input by character for plotting
   int beginX = 0;  // the x coordinate that the next character should start from which may differ from where `positionX` is
   for (byte index = 0; index < chosenSize; ++index) {
-    struct Character character = CHARACTERS[chosenCharacters[index]];
-    if (character.character == ' ') {  // if it's a space, add a space
+    memcpy_P(&tmpCharacter, &CHARACTERS[chosenCharacters[index]], sizeof(struct Character));
+
+    if (tmpCharacter.character == ' ') {  // if it's a space, add a space
       beginX += SPACE;
     } else {
       lcd.setCursor(index, 1);  // set cursor at character to plot
       lcd.blink();              // highlight character being plotted
-      beginX += plotCharacter(character, beginX);
+      beginX += plotCharacter(tmpCharacter, beginX);
       lcd.noBlink();
     }
   }
@@ -436,9 +438,10 @@ void setPen(bool toPaper) {  // used to handle lifting or lowering the pen on to
 }
 
 void updateChosenCharacter() {  // output the chosen character to the LCD and set the cursor based on `chosenSize`
-  text[chosenSize] = CHARACTERS[characterIndex].character;
+  memcpy_P(&tmpCharacter, &CHARACTERS[characterIndex], sizeof(struct Character));
+  text[chosenSize] = tmpCharacter.character;
   text[chosenSize + 1] = '\0';
-  lcd.print(CHARACTERS[characterIndex].character);
+  lcd.print(tmpCharacter.character);
   lcd.setCursor(chosenSize + 1, 0);  // +1 is used here to account for the `:` character
   delay(JOYSTICK_TILT_DELAY);        // delay to prevent rapid scrolling from holding the joystick
 }
