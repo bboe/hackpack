@@ -39,10 +39,8 @@ const char alphabet[] = "_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?,.#@";  //alphab
 int alphabetSize = sizeof(alphabet) - 1;
 String text;  // Store the label text
 
-int currentCharacter = 0;          //keep track of which character is currently displayed under the cursor
-int cursorPosition = 0;            //keeps track of the cursor position (left to right) on the screen
-int currentPage = 0;               //keeps track of the current page for menus
-const int charactersPerPage = 16;  //number of characters that can fit on one row of the screen
+int currentCharacter = 0;  //keep track of which character is currently displayed under the cursor
+int cursorPosition = 0;    //keeps track of the cursor position (left to right) on the screen
 
 // Stepper motor parameters
 const int stepCount = 200;
@@ -70,31 +68,14 @@ enum State { MainMenu,
 State currentState = MainMenu;
 State prevState = Printing;
 
-enum jState { LEFT,
-              RIGHT,
-              UP,
-              DOWN,
-              MIDDLE,
-              UPRIGHT,
-              UPLEFT,
-              DOWNRIGHT,
-              DOWNLEFT };
-jState joyState = MIDDLE;
-jState prevJoyState = MIDDLE;
-
 boolean pPenOnPaper = false;  // pen on paper in previous cycle
-int lineCount = 0;
 
 int xpos = 0;
 int ypos = 0;
-const int posS = 2;
-const int posM = 7;
-const int posL = 12;
 bool joyUp;
 bool joyDown;
 bool joyLeft;
 bool joyRight;
-int button1State;
 int joystickX;
 int joystickY;
 
@@ -219,7 +200,6 @@ void setup() {
 void loop() {
 
   button1.loop();
-  button1State = button1.getState();
 
   joystickX = analogRead(joystickXPin);
   joystickY = analogRead(joystickYPin);
@@ -266,7 +246,6 @@ void loop() {
         lcd.clear();
         prevState = Editing;
       }
-      //lcd.clear();
       lcd.setCursor(0, 0);
       lcd.print(":");
       lcd.setCursor(1, 0);
@@ -279,7 +258,6 @@ void loop() {
         if (currentCharacter > 0) {
           currentCharacter--;
           lcd.print(alphabet[currentCharacter]);
-          //Serial.println("Character UP");
         }
         delay(250);  // Delay to prevent rapid scrolling
 
@@ -288,7 +266,6 @@ void loop() {
         if (currentCharacter < (alphabetSize - 1)) {
           currentCharacter++;  //increment character value
           lcd.print(alphabet[currentCharacter]);
-          //Serial.println("Character DOWN");
         }
         delay(250);  // Delay to prevent rapid scrolling
       } else {
@@ -387,13 +364,11 @@ void loop() {
       break;
 
     case Printing:
-      // Printing mode
       if (prevState == PrintConfirmation) {
         lcd.setCursor(0, 0);
         lcd.print(PRINTING);  //update screen
       }
 
-      // ----------------------------------------------- plot text
       plotText(text, xpos, ypos);
 
       line(xpos + space, 0, 0);  // move to new line
@@ -548,15 +523,11 @@ void plotCharacter(char c, int x, int y) {  //this receives info from plotText f
       int cx = v / 10;       // get y ...
       int cy = v - cx * 10;  // and x
 
-      //if(cx > 0) cx = 1;
-
-      // 1: Normalize
       int x_start = x;
       int x_end = x + cx * x_scale;
       int y_start = y;
       int y_end = y + cy * y_scale * 3.5;  //we multiply by 3.5 here to equalize the Y output to match X,
       //this is because the Y lead screw covers less distance per-step than the X motor wheel (about 3.5 times less haha)
-      bool switched = false;
 
       Serial.print("Scale: ");
       Serial.print(scale);
@@ -605,37 +576,21 @@ void line(int newx, int newy, bool drawing) {
     over = dx / 2;
     for (i = 0; i < dx; i++) {  //for however much our current position differs from the target,
       xStepper.step(dirx);      //do a step in that direction (remember, dirx is always going to be either 1 or -1 from the ternary operator above)
-
-      // Serial.print("Xsteps: ");
-      // Serial.print(dirx);
-      // Serial.print("  ");
-
       over += dy;
       if (over >= dx) {
         over -= dx;
-
-        // Serial.print("Ysteps: ");
-        // Serial.println(diry);
-
         yStepper.step(diry);
       }
-      //delay(1);
     }
   } else {
     over = dy / 2;
     for (i = 0; i < dy; i++) {
       yStepper.step(diry);
-      // Serial.print("Ysteps: ");
-      // Serial.print(diry);
-      // Serial.print("  ");
       over += dx;
       if (over >= dy) {
         over -= dy;
-        // Serial.print("Xsteps: ");
-        // Serial.println(dirx);
         xStepper.step(dirx);
       }
-      //delay(1);
     }
   }
   xpos = newx;  //store positions
@@ -672,12 +627,4 @@ void releaseMotors() {
 
 void homeYAxis() {
   yStepper.step(-3000);  //lowers the pen holder to it's lowest position.
-}
-
-void resetScreen() {
-  lcd.clear();          // clear LCD
-  lcd.setCursor(0, 0);  // set cursor to row 0 column 0
-  lcd.print(": ");
-  lcd.setCursor(1, 0);  //move cursor down to row 1 column 0
-  cursorPosition = 1;
 }
