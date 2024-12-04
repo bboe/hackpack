@@ -30,6 +30,8 @@
 #define STEPPER_STEPS_PER_REVOLUTION 2048
 #define VECTOR_END 192
 #define VECTOR_POINTS 14
+#define WIDTH_ONE 1  // Used in combination with VECTOR_END
+#define WIDTH_TWO 2  // Used in combination with VECTOR_END
 
 #define INIT_MSG "Initializing..."   // Text to display on startup
 #define MODE_NAME "   LABELMAKER"    // these are variables for the text which is displayed in different menus.
@@ -70,7 +72,7 @@ const struct Character CHARACTERS[] = {
   { 'F', { 0, 104, 144, 22, 102, VECTOR_END } },
   { 'G', { 44, 104, 100, 140, 142, 122, VECTOR_END } },
   { 'H', { 0, 104, 2, 142, 44, 140, VECTOR_END } },
-  { 'I', { 0, 104, VECTOR_END } },
+  { 'I', { 0, 104, VECTOR_END | WIDTH_ONE } },
   { 'J', { 1, 110, 130, 141, 144, VECTOR_END } },
   { 'K', { 0, 104, 2, 142, 140, 22, 144, VECTOR_END } },
   { 'L', { 40, 100, 104, VECTOR_END } },
@@ -99,17 +101,17 @@ const struct Character CHARACTERS[] = {
   { '8', { 0, 140, 144, 104, 100, 2, 142, VECTOR_END } },
   { '9', { 0, 140, 144, 104, 102, 142, VECTOR_END } },
   { '/', { 0, 144, VECTOR_END } },
-  { ',', { 0, 111, VECTOR_END } },
+  { ',', { 0, 111, VECTOR_END | WIDTH_TWO } },
   { '-', { 2, 142, VECTOR_END } },
-  { '.', { 0, 100, VECTOR_END } },
-  { '!', { 0, 100, 1, 104, VECTOR_END } },
+  { '.', { 0, 100, VECTOR_END | WIDTH_ONE } },
+  { '!', { 0, 100, 1, 104, VECTOR_END | WIDTH_ONE } },
   { '?', { 20, 120, 21, 122, 142, 144, 104, VECTOR_END } },
-  { '\'', { 23, 124, VECTOR_END } },
+  { '\'', { 3, 104, VECTOR_END | WIDTH_ONE } },
   { '&', { 42, 120, 100, 101, 123, 124, 104, 103, 130, 140, VECTOR_END } },
   { '+', { 2, 142, 20, 124, VECTOR_END } },
-  { ':', { 21, 121, 23, 123, VECTOR_END } },
-  { ';', { 10, 121, 22, 122, VECTOR_END } },
-  { '"', { 14, 113, 33, 134, VECTOR_END } },
+  { ':', { 1, 101, 3, 103, VECTOR_END | WIDTH_ONE } },
+  { ';', { 0, 111, 12, 112, VECTOR_END | WIDTH_TWO } },
+  { '"', { 4, 103, 13, 114, VECTOR_END | WIDTH_TWO } },
   { '#', { 10, 114, 34, 130, 41, 101, 3, 143, VECTOR_END } },
   { '(', { 34, 124, 120, 130, VECTOR_END } },
   { ')', { 10, 120, 124, 114, VECTOR_END } },
@@ -314,9 +316,14 @@ void clearDisplay(byte columnStart) {
 int plotCharacter(struct Character &character, int beginX) {  // this function passes the vectors from a character though the plotLine function to draw it
   Serial.print("character: ");
   Serial.println(character.character);
+  int endSpace = SPACE;
   for (int i = 0; i < VECTOR_POINTS; i++) {  // iterate through each vector of the character
     byte vector = character.vectors[i];
-    if (vector == VECTOR_END) {  // no more vectors in this array
+    if ((vector & VECTOR_END) == VECTOR_END) {  // no more vectors in this array
+      if (vector & WIDTH_ONE)
+        endSpace = SCALE_X;
+      else if (vector & WIDTH_TWO)
+        endSpace = SCALE_X * 2;
       break;
     }
     bool draw = vector >= 100;
@@ -337,13 +344,7 @@ int plotCharacter(struct Character &character, int beginX) {  // this function p
 
     plotLine(endX, endY, draw);
   }
-  int ending_space = SPACE;
-  if (character.character == 'I') {
-    ending_space -= (SCALE_X * 4) / 1.1;
-  } else if (character.character == ',') {
-    ending_space -= (SCALE_X * 4) / 1.2;
-  }
-  return ending_space;
+  return endSpace;
 }
 
 void plotLine(int newX, int newY, bool drawing) {
