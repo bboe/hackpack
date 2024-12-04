@@ -147,25 +147,22 @@ Stepper yStepper(STEPPER_STEPS_PER_REVOLUTION, 2, 4, 3, 5);
 //  SETUP  //
 //////////////////////////////////////////////////
 void setup() {
+  Serial.begin(9600);  // initialize serial console so we can output messages
+
+  Serial.println("initializing LCD");
   lcd.init();
   lcd.backlight();
-
   lcd.setCursor(0, 0);
   lcd.print(INIT_MSG);  // print start up message
 
-  pinMode(LED_BUILTIN, OUTPUT);
-
-  Serial.begin(9600);
-
-  joystickButton.setDebounceTime(50);  //debounce prevents the joystick button from triggering twice when clicked
-
-  servo.attach(SERVO_PIN);             // attaches the servo on pin 9 to the servo object
+  Serial.println("initializing hardware");
+  joystickButton.setDebounceTime(50);  // debounce prevents the joystick button from triggering twice when clicked
+  servo.attach(SERVO_PIN);             // attaches the servo pin to the servo object
   servo.write(SERVO_OFF_PAPER_ANGLE);  // ensure that the servo is lifting the pen carriage away from the tape
+  xStepper.setSpeed(10);               // set x stepper speed (these should stay the same)
+  yStepper.setSpeed(12);               // set y stepper speed (^ weird stuff happens when you push it too fast)
 
-  // set the speed of the motors
-  yStepper.setSpeed(12);  // set first stepper speed (these should stay the same)
-  xStepper.setSpeed(10);  // set second stepper speed (^ weird stuff happens when you push it too fast)
-
+  Serial.println("resetting motors");
   resetMotors();
   changeState(MainMenu);
 }
