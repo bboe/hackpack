@@ -239,8 +239,8 @@ void loop() {
       // Check if the joystick is moved left (backspace) or right (add space)
       if (joystickLeft) {  // LEFT (backspace)
         if (chosenSize > 0) {
-          --chosenSize;
-          clearDisplay(chosenSize + 1);  // don't clear characters we want to keep to prevent flicker
+          characterIndex = chosenCharacters[--chosenSize];  // set index back to previous character index
+          clearDisplay(chosenSize + 1);                     // don't clear characters we want to keep to prevent flicker
         }
         delay(JOYSTICK_TILT_DELAY);                       // Delay to prevent rapid multiple presses
       } else if (joystickRight) {                         //RIGHT adds a space or character to the label
