@@ -132,8 +132,8 @@ State previousState;
 
 // hardware variables
 bool penOnPaper = false;  // current state of pen on paper
-int positionX = 0;
-int positionY = 0;
+int positionX;
+int positionY = RESET_Y_STEPS;  // ensure resetMotors lowers the Y axis all the way to the bottom
 
 // initialize the hardware
 ezButton joystickButton(JOYSTICK_BUTTON_PIN);  // https://arduinogetstarted.com/tutorials/arduino-button-library
@@ -166,12 +166,7 @@ void setup() {
   yStepper.setSpeed(12);  // set first stepper speed (these should stay the same)
   xStepper.setSpeed(10);  // set second stepper speed (^ weird stuff happens when you push it too fast)
 
-  yStepper.step(-RESET_Y_STEPS);  // lowers the pen holder to it's lowest position.
-
-  positionY = 0;
-  positionX = 0;
-
-  releaseMotors();
+  resetMotors();
   changeState(MainMenu);
 }
 
@@ -307,15 +302,8 @@ void loop() {
     case Print:
       lcd.print(PRINTING);  //update screen
 
-      plotText(positionX, positionY);
-
-      plotLine(positionX + SPACE, 0, 0);  // move to new line
-      positionX = 0;
-      positionY = 0;
-
+      plotText();
       chosenSize = 0;
-      yStepper.step(-RESET_Y_STEPS);
-      releaseMotors();
       changeState(Edit);
       break;
   }
@@ -346,7 +334,7 @@ void clearDisplay(byte columnStart) {
   lcd.setCursor(0, 0);
 }
 
-void plotCharacter(struct Character &character, int x, int y) {  //this receives info from plotText for which character to plot,
+void plotCharacter(struct Character &character, int beginX) {  //this receives info from plotText for which character to plot,
   // first it does some logic to make specific tweaks depending on the character, so some characters need more space, others less,
   // and some we even want to swap (in the case of space, we're swapping _ (underscore) and space so that we have something to show on the screen)
 
@@ -371,9 +359,9 @@ void plotCharacter(struct Character &character, int x, int y) {  //this receives
       int vectorX = vector / 10;            // get x ...
       int vectorY = vector - vectorX * 10;  // and y
 
-      int endX = x + vectorX * SCALE_X;
-      int endY = y + vectorY * SCALE_Y * 3.5;  //we multiply by 3.5 here to equalize the Y output to match X,
-      //this is because the Y lead screw covers less distance per-step than the X motor wheel (about 3.5 times less haha)
+      int endX = beginX + vectorX * SCALE_X;
+      int endY = vectorY * SCALE_Y * 3.5;  // we multiply by 3.5 here to equalize the Y output to match X, because the Y lead screw
+                                           // covers less distance per-step than the X motor wheel (about 3.5 times less haha)
 
       Serial.print("Scale: ");
       Serial.print(SCALE_X);
@@ -436,16 +424,16 @@ void plotLine(int newX, int newY, bool drawing) {
   positionY = newY;  // store new position
 }
 
-void plotText(int x, int y) {  //takes in our label as a string, and breaks it up by character for plotting
-  int beginX = 0;
+void plotText() {  // takes in our label as a string, and breaks it up by character for plotting
+  int beginX = 0;  // the x coordinate that the next character should start from which may differ from where `positionX` is
   Serial.println("plot string");
   Serial.println(setText());
   for (byte index = 0; index < chosenSize; ++index) {
     struct Character character = CHARACTERS[chosenCharacters[index]];
-    if (character.character == SPACE_CHARACTER) {  //if it's a space, add a space.
+    if (character.character == SPACE_CHARACTER) {  // if it's a space, add a space.
       beginX += SPACE;
     } else {
-      plotCharacter(character, x + beginX, y);
+      plotCharacter(character, beginX);
       beginX += SPACE;  //SCALE_X is multiplied by 4 here to convert it to steps (because it normally get's multiplied by a coordinate with a max of 4)
       if (character.character == 'I') {
         beginX -= (SCALE_X * 4) / 1.1;
@@ -455,18 +443,24 @@ void plotText(int x, int y) {  //takes in our label as a string, and breaks it u
     }
   }
   Serial.println();
-  releaseMotors();
+
+  plotLine(beginX + SPACE, 0, 0);  // move pen to start location for subsequent plotting
+  resetMotors();
 }
 
-void releaseMotors() {
+void resetMotors() {
   const int xPins[4] = { 6, 8, 7, 9 };  // pins for x-motor coils
   const int yPins[4] = { 2, 4, 3, 5 };  // pins for y-motor coils
+
+  setPen(false);
+  yStepper.step(0 - positionY);
+  positionX = 0;
+  positionY = 0;
 
   for (int i = 0; i < 4; i++) {  // deactivates all the motor coils
     digitalWrite(xPins[i], 0);   // picks each motor pin and drops voltage to 0
     digitalWrite(yPins[i], 0);
   }
-  setPen(false);
 }
 
 void setPen(bool toPaper) {  // used to handle lifting or lowering the pen on to the tape
