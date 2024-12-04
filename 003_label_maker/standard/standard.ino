@@ -45,7 +45,6 @@ struct Character {
     tens     = x coordinate;
     hundreds = draw/don't draw ..
     200      = end
-    222      = plot point
 
     Note: Values should not be prefixed with `0` because that would indicate they are octal-literals rather than decimal-literals:
     https://en.cppreference.com/w/cpp/language/integer_literal
@@ -101,14 +100,14 @@ const struct Character CHARACTERS[] = {
   { '/', { 0, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
   { ',', { 0, 111, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
   { '-', { 2, 142, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
-  { '.', { 0, 222, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
-  { '!', { 0, 222, 1, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
-  { '?', { 20, 222, 21, 122, 142, 144, 104, 200, 200, 200, 200, 200, 200, 200 } },
+  { '.', { 0, 100, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '!', { 0, 100, 1, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { '?', { 20, 120, 21, 122, 142, 144, 104, 200, 200, 200, 200, 200, 200, 200 } },
   { '\'', { 23, 124, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
   { '&', { 42, 120, 100, 101, 123, 124, 104, 103, 130, 140, 200, 200, 200, 200 } },
   { '+', { 2, 142, 20, 124, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
-  { ':', { 21, 222, 23, 222, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
-  { ';', { 10, 121, 22, 222, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { ':', { 21, 121, 23, 123, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
+  { ';', { 10, 121, 22, 122, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
   { '"', { 14, 113, 33, 134, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
   { '#', { 10, 114, 34, 130, 41, 101, 3, 143, 200, 200, 200, 200, 200, 200 } },
   { '(', { 34, 124, 120, 130, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 } },
@@ -117,7 +116,7 @@ const struct Character CHARACTERS[] = {
   { '@', { 31, 133, 113, 111, 141, 144, 104, 100, 140, 200, 200, 200, 200, 200 } },
   { '*', { 2, 142, 20, 124, 4, 140, 0, 144, 200, 200, 200, 200, 200, 200 } },
   { '}', { 0, 140, 144, 104, 100, 12, 113, 33, 132, 31, 111, 200, 200, 200 } },      // Smiley
-  { '~', { 0, 140, 144, 104, 100, 13, 222, 33, 222, 32, 131, 111, 112, 132 } },      // Open mouth Smiley
+  { '~', { 0, 140, 144, 104, 100, 13, 113, 33, 133, 32, 131, 111, 112, 132 } },      // Open mouth Smiley
   { '$', { 20, 142, 143, 134, 123, 114, 103, 102, 120, 200, 200, 200, 200, 200 } },  // Heart
 };
 
@@ -342,31 +341,26 @@ int plotCharacter(struct Character &character, int beginX) {  // this function p
     if (vector == 200) {  // no more vectors in this array
       break;
     }
-    if (vector == 222) {  // plot single point
-      setPen(true);
-      setPen(false);
-    } else {
-      int draw = 0;
-      if (vector > 99) {
-        draw = 1;
-        vector -= 100;
-      }
-      int vectorX = vector / 10;            // get x ...
-      int vectorY = vector - vectorX * 10;  // and y
-
-      int endX = beginX + vectorX * SCALE_X;
-      int endY = vectorY * SCALE_Y * 3.5;  // we multiply by 3.5 here to equalize the Y output to match X, because the Y lead screw
-                                           // covers less distance per-step than the X motor wheel (about 3.5 times less haha)
-
-      Serial.print("Goal: (");
-      Serial.print(endX);
-      Serial.print(", ");
-      Serial.print(endY);
-      Serial.print(") Draw: ");
-      Serial.println(draw);
-
-      plotLine(endX, endY, draw);
+    int draw = 0;
+    if (vector > 99) {
+      draw = 1;
+      vector -= 100;
     }
+    int vectorX = vector / 10;            // get x ...
+    int vectorY = vector - vectorX * 10;  // and y
+
+    int endX = beginX + vectorX * SCALE_X;
+    int endY = vectorY * SCALE_Y * 3.5;  // we multiply by 3.5 here to equalize the Y output to match X, because the Y lead screw
+                                         // covers less distance per-step than the X motor wheel (about 3.5 times less haha)
+
+    Serial.print("Goal: (");
+    Serial.print(endX);
+    Serial.print(", ");
+    Serial.print(endY);
+    Serial.print(") Draw: ");
+    Serial.println(draw);
+
+    plotLine(endX, endY, draw);
   }
   int ending_space = SPACE;
   if (character.character == 'I') {
