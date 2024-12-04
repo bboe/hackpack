@@ -122,10 +122,10 @@ const struct Character CHARACTERS[] = {
 };
 
 // menu variables
+bool confirmAction;                    // keeps track of yes or no confirmations
 byte characterIndex = 0;               // keep track of which character is currently displayed under the cursor
 byte chosenCharacters[LCD_WIDTH - 1];  // keep track of which characters are selected
 byte chosenSize = 0;                   // keep track of how many characters have been selected
-byte cursorIndex = 0;                  // keeps track of the cursor index (left to right) on the screen
 char text[LCD_WIDTH];                  // buffer to hold the text we're plotting, which requires an extra char for '\0'
 State currentState = Print;            // The initial value needs to be anything other than `MainMenu`
 State previousState;
@@ -189,10 +189,9 @@ void loop() {
         lcd.print(MODE_NAME);
         lcd.setCursor(0, 1);
         lcd.print("      START     ");
-        cursorIndex = 5;
       }
 
-      lcd.setCursor(cursorIndex, 1);
+      lcd.setCursor(5, 1);
 
       if (millis() % 600 < 400) {  // Blink every 500 ms
         lcd.print(">");
@@ -261,29 +260,26 @@ void loop() {
     case PrintConfirmation:
       if (previousState != PrintConfirmation) {
         previousState = PrintConfirmation;
+        confirmAction = false;  // default confirmation to no
         lcd.print(PRINT_CONF);  //print menu text
         lcd.setCursor(0, 1);    // move cursor to the second line
         lcd.print("   YES     NO   ");
-        lcd.setCursor(2, 1);
-        cursorIndex = 2;
       }
 
       //the following two if statements help move the blinking cursor from one option to the other.
       if (joystickLeft) {  //left
+        confirmAction = true;
         lcd.setCursor(0, 1);
         lcd.print("   YES     NO   ");
-        lcd.setCursor(2, 1);
-        cursorIndex = 2;
         delay(JOYSTICK_TILT_DELAY);
       } else if (joystickRight) {  //right
+        confirmAction = false;
         lcd.setCursor(0, 1);
         lcd.print("   YES     NO   ");
-        lcd.setCursor(10, 1);
-        cursorIndex = 10;
         delay(JOYSTICK_TILT_DELAY);
       }
 
-      lcd.setCursor(cursorIndex, 1);
+      lcd.setCursor(confirmAction ? 2 : 10, 1);
 
       if (millis() % 600 < 400) {  // Blink every 500 ms
         lcd.print(">");
@@ -292,7 +288,7 @@ void loop() {
       }
 
       if (joystickButton.isPressed()) {  //handles clicking options in print confirmation
-        changeState(cursorIndex == 2 ? Print : Edit);
+        changeState(confirmAction ? Print : Edit);
       }
       break;
 
