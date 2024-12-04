@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////
-    //  LIBRARIES  //
+//  LIBRARIES  //
 //////////////////////////////////////////////////
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -13,36 +13,36 @@
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);  // Set the LCD address to 0x27 for a 16x2 display
 
-ezButton button1(14); //joystick button handler
-#define INIT_MSG "Initializing..." // Text to display on startup
-#define MODE_NAME "   LABELMAKER   " //these are variables for the text which is displayed in different menus. 
-#define PRINT_CONF "  PRINT LABEL?  " //try changing these, or making new ones and adding conditions for when they are used
-#define PRINTING "    PRINTING    " // NOTE: this text must be 16 characters or LESS in order to fit on the screen correctly
-#define MENU_CLEAR ":                " //this one clears the menu for editing
+ezButton button1(14);                   //joystick button handler
+#define INIT_MSG "Initializing..."      // Text to display on startup
+#define MODE_NAME "   LABELMAKER   "    //these are variables for the text which is displayed in different menus.
+#define PRINT_CONF "  PRINT LABEL?  "   //try changing these, or making new ones and adding conditions for when they are used
+#define PRINTING "    PRINTING    "     // NOTE: this text must be 16 characters or LESS in order to fit on the screen correctly
+#define MENU_CLEAR ":                "  //this one clears the menu for editing
 
 
 //text variables
-int x_scale = 230;//these are multiplied against the stored coordinate (between 0 and 4) to get the actual number of steps moved
-int y_scale = 230;//for example, if this is 230(default), then 230(scale) x 4(max coordinate) = 920 (motor steps)
+int x_scale = 230;  //these are multiplied against the stored coordinate (between 0 and 4) to get the actual number of steps moved
+int y_scale = 230;  //for example, if this is 230(default), then 230(scale) x 4(max coordinate) = 920 (motor steps)
 int scale = x_scale;
-int space = x_scale * 5; //space size between letters (as steps) based on X scale in order to match letter width
+int space = x_scale * 5;  //space size between letters (as steps) based on X scale in order to match letter width
 //multiplied by 5 because the scale variables are multiplied against coordinates later, while space is just fed in directly, so it needs to be scaled up by 5 to match
 
 
 // Joystick setup
-const int joystickXPin = A2;  // Connect the joystick X-axis to this analog pin
-const int joystickYPin = A1;  // Connect the joystick Y-axis to this analog pin
+const int joystickXPin = A2;              // Connect the joystick X-axis to this analog pin
+const int joystickYPin = A1;              // Connect the joystick Y-axis to this analog pin
 const int joystickButtonThreshold = 200;  // Adjust this threshold value based on your joystick
 
 // Menu parameters
-const char alphabet[] = "_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?,.#@"; //alphabet menu
+const char alphabet[] = "_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?,.#@";  //alphabet menu
 int alphabetSize = sizeof(alphabet) - 1;
 String text;  // Store the label text
 
-int currentCharacter = 0; //keep track of which character is currently displayed under the cursor
-int cursorPosition = 0; //keeps track of the cursor position (left to right) on the screen
-int currentPage = 0; //keeps track of the current page for menus
-const int charactersPerPage = 16; //number of characters that can fit on one row of the screen
+int currentCharacter = 0;          //keep track of which character is currently displayed under the cursor
+int cursorPosition = 0;            //keeps track of the cursor position (left to right) on the screen
+int currentPage = 0;               //keeps track of the current page for menus
+const int charactersPerPage = 16;  //number of characters that can fit on one row of the screen
 
 // Stepper motor parameters
 const int stepCount = 200;
@@ -50,28 +50,39 @@ const int stepsPerRevolution = 2048;
 
 // initialize the stepper library for both steppers:
 Stepper xStepper(stepsPerRevolution, 6, 8, 7, 9);
-Stepper yStepper(stepsPerRevolution, 2, 4, 3, 5); 
+Stepper yStepper(stepsPerRevolution, 2, 4, 3, 5);
 
-int xPins[4] = {6, 8, 7, 9};  // pins for x-motor coils
-int yPins[4] = {2, 4, 3, 5};    // pins for y-motor coils
+int xPins[4] = { 6, 8, 7, 9 };  // pins for x-motor coils
+int yPins[4] = { 2, 4, 3, 5 };  // pins for y-motor coils
 
 //Servo
-const int SERVO_PIN  = 13;
+const int SERVO_PIN = 13;
 Servo servo;
-int angle = 30; // the current angle of servo motor
+int angle = 30;  // the current angle of servo motor
 
 
 // Creates states to store what the current menu and joystick states are
 // Decoupling the state from other functions is good because it means the sensor / screen aren't hardcoded into every single action and can be handled at a higher level
-enum State { MainMenu, Editing, PrintConfirmation, Printing };
+enum State { MainMenu,
+             Editing,
+             PrintConfirmation,
+             Printing };
 State currentState = MainMenu;
 State prevState = Printing;
 
-enum jState {LEFT, RIGHT, UP, DOWN, MIDDLE, UPRIGHT, UPLEFT, DOWNRIGHT, DOWNLEFT};
+enum jState { LEFT,
+              RIGHT,
+              UP,
+              DOWN,
+              MIDDLE,
+              UPRIGHT,
+              UPLEFT,
+              DOWNRIGHT,
+              DOWNLEFT };
 jState joyState = MIDDLE;
 jState prevJoyState = MIDDLE;
 
-boolean pPenOnPaper = false; // pen on paper in previous cycle
+boolean pPenOnPaper = false;  // pen on paper in previous cycle
 int lineCount = 0;
 
 int xpos = 0;
@@ -90,7 +101,8 @@ int joystickY;
 //////////////////////////////////////////////////
 //  CHARACTER VECTORS  //
 //////////////////////////////////////////////////
-const uint8_t vector[63][14] = { //this alphabet set comes from a great plotter project you can find here: 
+const uint8_t vector[63][14] = {
+  //this alphabet set comes from a great plotter project you can find here:
   /*
     encoding works as follows:
     ones     = y coordinate;
@@ -100,69 +112,70 @@ const uint8_t vector[63][14] = { //this alphabet set comes from a great plotter 
     222      = plot point
     !! for some reason leading zeros cause problems !!
   */
-  {  0,  124,  140,  32,  112,   200,  200,  200,  200,  200,  200,  200,  200,  200}, //my A character
-  {  0,  104,  134,  132,    2,  142,  140,  100,  200,  200,  200,  200,  200,  200}, /*B*/ // the 2 was originally 002, not sure why
-  { 41,  130,  110,  101,  103,  114,  134,  143,  200,  200,  200,  200,  200,  200}, /*C*/
-  {  0,  104,  134,  143,  141,  130,  100,  200,  200,  200,  200,  200,  200,  200}, /*D*/
-  { 40,  100,  104,  144,   22,  102,  200,  200,  200,  200,  200,  200,  200,  200}, /*E*/
-  {  0,  104,  144,   22,  102,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*F*/
-  { 44,  104,  100,  140,  142,  122,  200,  200,  200,  200,  200,  200,  200,  200}, /*G*/
-  {  0,  104,    2,  142,   44,  140,  200,  200,  200,  200,  200,  200,  200,  200}, /*H*/
-  {  0,  104,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*I*/
-  {  1,  110,  130,  141,  144,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*J*/
-  {  0,  104,    2,  142,  140,   22,  144,  200,  200,  200,  200,  200,  200,  200}, /*K*/
-  { 40,  100,  104,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*L*/
-  {  0,  104,  122,  144,  140,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*M */
-  {  0,  104,  140,  144,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*N*/
-  { 10,  101,  103,  114,  134,  143,  141,  130,  110,  200,  200,  200,  200,  200}, /*O*/
-  {  0,  104,  144,  142,  102,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*P*/
-  {  0,  104,  144,  142,  120,  100,   22,  140,  200,  200,  200,  200,  200,  200}, /*Q*/
-  {  0,  104,  144,  142,  102,   22,  140,  200,  200,  200,  200,  200,  200,  200}, /*R*/
-  {  0,  140,  142,  102,  104,  144,  200,  200,  200,  200,  200,  200,  200,  200}, /*S*/
-  { 20,  124,    4,  144,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*T*/
-  {  4,  101,  110,  130,  141,  144,  200,  200,  200,  200,  200,  200,  200,  200}, /*U*/
-  {  4,  120,  144,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*V*/
-  {  4,  100,  122,  140,  144,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*W*/
-  {  0,  144,    4,  140,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*X*/
-  {  4,  122,  144,   22,  120,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*Y*/
-  {  4,  144,  100,  140,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*Z*/
-  {  0,  104,  144,  140,  100,  144,  200,  200,  200,  200,  200,  200,  200,  200}, /*0*/
-  {  0,  140,   20,  124,  104,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*1*/
-  {  4,  144,  142,  102,  100,  140,  200,  200,  200,  200,  200,  200,  200,  200}, /*2*/
-  {  0,  140,  144,  104,   12,  142,  200,  200,  200,  200,  200,  200,  200,  200}, /*3*/
-  { 20,  123,   42,  102,  104,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*4*/
-  {  0,  140,  142,  102,  104,  144,  200,  200,  200,  200,  200,  200,  200,  200}, /*5*/
-  {  2,  142,  140,  100,  104,  144,  200,  200,  200,  200,  200,  200,  200,  200}, /*6*/
-  {  0,  144,  104,   12,  132,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*7*/
-  {  0,  140,  144,  104,  100,    2,  142,  200,  200,  200,  200,  200,  200,  200}, /*8*/
-  {  0,  140,  144,  104,  102,  142,  200,  200,  200,  200,  200,  200,  200,  200}, /*9*/
-  { 200, 200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /* */
-  { 200, 200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /* */
-  {  0,  144,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*/*/
-  {  0,  102,  124,  142,  140,   42,  102,    4,  103,   44,  143,  200,  200,  200}, /*Ä*/
-  {  0,  102,  142,  140,  100,    2,   14,  113,   34,  133,  200,  200,  200,  200}, /*Ö*/
-  {  4,  100,  140,  144,   14,  113,   34,  133,  200,  200,  200,  200,  200,  200}, /*Ü*/
-  {  0,  111,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*,*/
-  {  2,  142,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*-*/
-  {  0,  222,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*.*/
-  {  0,  222,    1,  104,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*!*/
-  {  20, 222,   21,  122,  142,  144,  104,  200,  200,  200,  200,  200,  200,  200}, /*?*/ 
-  {  0,  104,  134,  133,  122,  142,  140,  110,  200,  200,  200,  200,  200,  200}, /*ß*/
-  {  23, 124,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*'*/
-  {  42, 120,  100,  101,  123,  124,  104,  103,  130,  140,  200,  200,  200,  200}, /*&*/
-  {  2,  142,   20,  124,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*+*/
-  {  21, 222,   23,  222,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*:*/
-  {  10, 121,   22,  222,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*;*/
-  {  14, 113,   33,  134,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*"*/
-  {  10, 114,   34,  130,   41,  101,    3,  143,  200,  200,  200,  200,  200,  200}, /*#*/
-  {  34, 124,  120,  130,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*(*/
-  {  10, 120,  124,  114,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*)*/
-  {  1,  141,   43,  103,  200,  200,  200,  200,  200,  200,  200,  200,  200,  200}, /*=*/
-  {  31, 133,  113,  111,  141,  144,  104,  100,  140,  200,  200,  200,  200,  200}, /*@*/
-  {  2,  142,   20,  124,    4,  140,  0,    144,  200,  200,  200,  200,  200,  200}, /***/
-  {  0,  140,  144,  104,  100,   12,  113,   33,  132,   31,  111,  200,  200,  200}, /*} Smiley*/
-  {  0,  140,  144,  104,  100,   13,  222,   33,  222,   32,  131,  111,  112,  132}, /*~ Open mouth Smiley*/
-  {  20, 142,  143,  134,  123,  114,  103,  102,  120,  200,  200,  200,  200,  200} /*$ Heart*/
+  { 0, 124, 140, 32, 112, 200, 200, 200, 200, 200, 200, 200, 200, 200 },  //my A character
+  { 0, 104, 134, 132, 2, 142, 140, 100, 200, 200, 200, 200, 200, 200 },
+  /*B*/                                                                     // the 2 was originally 002, not sure why
+  { 41, 130, 110, 101, 103, 114, 134, 143, 200, 200, 200, 200, 200, 200 },  /*C*/
+  { 0, 104, 134, 143, 141, 130, 100, 200, 200, 200, 200, 200, 200, 200 },   /*D*/
+  { 40, 100, 104, 144, 22, 102, 200, 200, 200, 200, 200, 200, 200, 200 },   /*E*/
+  { 0, 104, 144, 22, 102, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*F*/
+  { 44, 104, 100, 140, 142, 122, 200, 200, 200, 200, 200, 200, 200, 200 },  /*G*/
+  { 0, 104, 2, 142, 44, 140, 200, 200, 200, 200, 200, 200, 200, 200 },      /*H*/
+  { 0, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*I*/
+  { 1, 110, 130, 141, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*J*/
+  { 0, 104, 2, 142, 140, 22, 144, 200, 200, 200, 200, 200, 200, 200 },      /*K*/
+  { 40, 100, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },  /*L*/
+  { 0, 104, 122, 144, 140, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*M */
+  { 0, 104, 140, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*N*/
+  { 10, 101, 103, 114, 134, 143, 141, 130, 110, 200, 200, 200, 200, 200 },  /*O*/
+  { 0, 104, 144, 142, 102, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*P*/
+  { 0, 104, 144, 142, 120, 100, 22, 140, 200, 200, 200, 200, 200, 200 },    /*Q*/
+  { 0, 104, 144, 142, 102, 22, 140, 200, 200, 200, 200, 200, 200, 200 },    /*R*/
+  { 0, 140, 142, 102, 104, 144, 200, 200, 200, 200, 200, 200, 200, 200 },   /*S*/
+  { 20, 124, 4, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*T*/
+  { 4, 101, 110, 130, 141, 144, 200, 200, 200, 200, 200, 200, 200, 200 },   /*U*/
+  { 4, 120, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*V*/
+  { 4, 100, 122, 140, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*W*/
+  { 0, 144, 4, 140, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },     /*X*/
+  { 4, 122, 144, 22, 120, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*Y*/
+  { 4, 144, 100, 140, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*Z*/
+  { 0, 104, 144, 140, 100, 144, 200, 200, 200, 200, 200, 200, 200, 200 },   /*0*/
+  { 0, 140, 20, 124, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*1*/
+  { 4, 144, 142, 102, 100, 140, 200, 200, 200, 200, 200, 200, 200, 200 },   /*2*/
+  { 0, 140, 144, 104, 12, 142, 200, 200, 200, 200, 200, 200, 200, 200 },    /*3*/
+  { 20, 123, 42, 102, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*4*/
+  { 0, 140, 142, 102, 104, 144, 200, 200, 200, 200, 200, 200, 200, 200 },   /*5*/
+  { 2, 142, 140, 100, 104, 144, 200, 200, 200, 200, 200, 200, 200, 200 },   /*6*/
+  { 0, 144, 104, 12, 132, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*7*/
+  { 0, 140, 144, 104, 100, 2, 142, 200, 200, 200, 200, 200, 200, 200 },     /*8*/
+  { 0, 140, 144, 104, 102, 142, 200, 200, 200, 200, 200, 200, 200, 200 },   /*9*/
+  { 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 }, /* */
+  { 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 }, /* */
+  { 0, 144, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*/*/
+  { 0, 102, 124, 142, 140, 42, 102, 4, 103, 44, 143, 200, 200, 200 },       /*Ä*/
+  { 0, 102, 142, 140, 100, 2, 14, 113, 34, 133, 200, 200, 200, 200 },       /*Ö*/
+  { 4, 100, 140, 144, 14, 113, 34, 133, 200, 200, 200, 200, 200, 200 },     /*Ü*/
+  { 0, 111, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*,*/
+  { 2, 142, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*-*/
+  { 0, 222, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*.*/
+  { 0, 222, 1, 104, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },     /*!*/
+  { 20, 222, 21, 122, 142, 144, 104, 200, 200, 200, 200, 200, 200, 200 },   /*?*/
+  { 0, 104, 134, 133, 122, 142, 140, 110, 200, 200, 200, 200, 200, 200 },   /*ß*/
+  { 23, 124, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },  /*'*/
+  { 42, 120, 100, 101, 123, 124, 104, 103, 130, 140, 200, 200, 200, 200 },  /*&*/
+  { 2, 142, 20, 124, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*+*/
+  { 21, 222, 23, 222, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*:*/
+  { 10, 121, 22, 222, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*;*/
+  { 14, 113, 33, 134, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },   /*"*/
+  { 10, 114, 34, 130, 41, 101, 3, 143, 200, 200, 200, 200, 200, 200 },      /*#*/
+  { 34, 124, 120, 130, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },  /*(*/
+  { 10, 120, 124, 114, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },  /*)*/
+  { 1, 141, 43, 103, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*=*/
+  { 31, 133, 113, 111, 141, 144, 104, 100, 140, 200, 200, 200, 200, 200 },  /*@*/
+  { 2, 142, 20, 124, 4, 140, 0, 144, 200, 200, 200, 200, 200, 200 },        /***/
+  { 0, 140, 144, 104, 100, 12, 113, 33, 132, 31, 111, 200, 200, 200 },      /*} Smiley*/
+  { 0, 140, 144, 104, 100, 13, 222, 33, 222, 32, 131, 111, 112, 132 },      /*~ Open mouth Smiley*/
+  { 20, 142, 143, 134, 123, 114, 103, 102, 120, 200, 200, 200, 200, 200 }   /*$ Heart*/
 };
 
 //////////////////////////////////////////////////
@@ -668,5 +681,3 @@ void resetScreen() {
   lcd.setCursor(1, 0);  //move cursor down to row 1 column 0
   cursorPosition = 1;
 }
-
-

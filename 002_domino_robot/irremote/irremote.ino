@@ -1,4 +1,4 @@
-#define IR_USE_AVR_TIMER1 // overrides conflicting pins in IRremote.hpp
+#define IR_USE_AVR_TIMER1  // overrides conflicting pins in IRremote.hpp
 #include <IRremote.hpp>
 #include <SparkFun_TB6612.h>
 
@@ -10,23 +10,23 @@
 #define IR_ONE 0xBA45FF00
 #define IR_TWO 0xB946FF00
 
-#define PWMA 11  // Adjust as necessary
-#define PWMB 5  // Adjust as necessary
-#define AIN1 9  // Adjust as necessary
-#define BIN1 7  // Adjust as necessary
-#define AIN2 10  // Adjust as necessary
-#define BIN2 6  // Adjust as necessary
-#define OFFSET_A 1         // Adjust if necessary
-#define OFFSET_B 1         // Adjust if necessary
+#define PWMA 11     // Adjust as necessary
+#define PWMB 5      // Adjust as necessary
+#define AIN1 9      // Adjust as necessary
+#define BIN1 7      // Adjust as necessary
+#define AIN2 10     // Adjust as necessary
+#define BIN2 6      // Adjust as necessary
+#define OFFSET_A 1  // Adjust if necessary
+#define OFFSET_B 1  // Adjust if necessary
 #define STBY 8
-#define TOP_SPEED 90       // Define top speed
-#define SERVO_RIGHT 20                                //PWM value to make the servo move right
-#define SERVO_LEFT 180                               //PWM value to make the servo move left.
+#define TOP_SPEED 90    // Define top speed
+#define SERVO_RIGHT 20  //PWM value to make the servo move right
+#define SERVO_LEFT 180  //PWM value to make the servo move left.
 #define SERVO_PIN 13
-#define SERVO_MIN_PULSE 650  // Minimum pulse width in microseconds
-#define SERVO_MAX_PULSE 2400 // Maximum pulse width in microseconds
-#define DISPENSE_DISTANCE 9000 //Value combinedMotorSpeed needs to reach to drop a domino. Decreasing this puts dominoes closer together.
-#define PULSE_INTERVAL 20000 // Interval between pulses in milliseconds
+#define SERVO_MIN_PULSE 650     // Minimum pulse width in microseconds
+#define SERVO_MAX_PULSE 2400    // Maximum pulse width in microseconds
+#define DISPENSE_DISTANCE 9000  //Value combinedMotorSpeed needs to reach to drop a domino. Decreasing this puts dominoes closer together.
+#define PULSE_INTERVAL 20000    // Interval between pulses in milliseconds
 #define IR_Input 3
 
 bool servoRight = true;
@@ -35,20 +35,20 @@ bool servoRight = true;
 Motor motor1 = Motor(AIN1, AIN2, PWMA, OFFSET_A, STBY);
 Motor motor2 = Motor(BIN1, BIN2, PWMB, OFFSET_B, STBY);
 
-int combinedmotorspeed, leftMotorSpeed, rightMotorSpeed;    //creating variables like this initializes all their values to 0.
+int combinedmotorspeed, leftMotorSpeed, rightMotorSpeed;  //creating variables like this initializes all their values to 0.
 
 //Servo servoMotor;                                           //Create an instance of a servo motor object
 
 bool raceMode = false;
 unsigned long speedBoost = 0;
 
-bool holding = false; // This should be a global variable
+bool holding = false;  // This should be a global variable
 unsigned long lastCommandTime = 0;
 unsigned long lastServoTime = 0;
 
-const unsigned long commandTimeout = 250; // Timeout in milliseconds
+const unsigned long commandTimeout = 250;  // Timeout in milliseconds
 
-unsigned long distanceSinceLastDrop = DISPENSE_DISTANCE;    //Starting with this as DISPENSE_DISTANCE makes the vehicle drop a domino immediately.
+unsigned long distanceSinceLastDrop = DISPENSE_DISTANCE;  //Starting with this as DISPENSE_DISTANCE makes the vehicle drop a domino immediately.
 bool dominoDropped = false;
 
 const int RECV = IR_Input;
@@ -118,7 +118,7 @@ void loop() {
       // Serial.println("HOLDING = FALSE");
     }
 
-    irrecv.resume(); // Prepare for the next command
+    irrecv.resume();  // Prepare for the next command
   }
 
   combinedmotorspeed = leftMotorSpeed + rightMotorSpeed;
@@ -133,20 +133,20 @@ void loop() {
     // Serial.println("Timeout - STOP CAR");
     commandReceived = true;
   }
-  
-  if ((distanceSinceLastDrop >= DISPENSE_DISTANCE) && !dominoDropped && !raceMode) {              //if we've travelled far enough and a domino hasn't been dropped yet
-      // dropDomino();                                  
-      servoRight = true;
-      distanceSinceLastDrop = 0;
-      dominoDropped = true;                        //domino has been dropped
-      Serial.println("Drop Domino_____________________");
-      
-    } else if ((distanceSinceLastDrop >= 0.7 * DISPENSE_DISTANCE) && dominoDropped && !raceMode) {  //if a domino was dropped and we're far enough away to close the domino gate without jamming
-      // resetServo();
-      servoRight = false;
-      dominoDropped = false;                                                           //we haven't dropped the new domino, so now this is false
-      Serial.println("Reset Servo_____________________");
-    }
+
+  if ((distanceSinceLastDrop >= DISPENSE_DISTANCE) && !dominoDropped && !raceMode) {  //if we've travelled far enough and a domino hasn't been dropped yet
+    // dropDomino();
+    servoRight = true;
+    distanceSinceLastDrop = 0;
+    dominoDropped = true;  //domino has been dropped
+    Serial.println("Drop Domino_____________________");
+
+  } else if ((distanceSinceLastDrop >= 0.7 * DISPENSE_DISTANCE) && dominoDropped && !raceMode) {  //if a domino was dropped and we're far enough away to close the domino gate without jamming
+    // resetServo();
+    servoRight = false;
+    dominoDropped = false;  //we haven't dropped the new domino, so now this is false
+    Serial.println("Reset Servo_____________________");
+  }
 }
 
 void driveForward() {
@@ -202,12 +202,12 @@ void driveBackward() {
 void pulseServoRight() {
   // Serial.println("PulseServoRight");
   unsigned long startTime;
-  unsigned long pulseWidth = SERVO_MIN_PULSE; // Duration of the pulse in microseconds
-  unsigned long period = PULSE_INTERVAL; // Total period duration in microseconds (20ms)
+  unsigned long pulseWidth = SERVO_MIN_PULSE;  // Duration of the pulse in microseconds
+  unsigned long period = PULSE_INTERVAL;       // Total period duration in microseconds (20ms)
 
   // Start the pulse
   digitalWrite(SERVO_PIN, HIGH);
-  startTime = micros(); // Record the start time
+  startTime = micros();  // Record the start time
 
   // Wait for the pulse width duration
   while (micros() - startTime < pulseWidth) {
@@ -229,12 +229,12 @@ void pulseServoRight() {
 void pulseServoLeft() {
   // Serial.println("PulseServoLeft");
   unsigned long startTime;
-  unsigned long pulseWidth = SERVO_MAX_PULSE; // Duration of the pulse in microseconds
-  unsigned long period = PULSE_INTERVAL; // Total period duration in microseconds (20ms)
+  unsigned long pulseWidth = SERVO_MAX_PULSE;  // Duration of the pulse in microseconds
+  unsigned long period = PULSE_INTERVAL;       // Total period duration in microseconds (20ms)
 
   // Start the pulse
   digitalWrite(SERVO_PIN, HIGH);
-  startTime = micros(); // Record the start time
+  startTime = micros();  // Record the start time
 
   // Wait for the pulse width duration
   while (micros() - startTime < pulseWidth) {

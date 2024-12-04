@@ -3,7 +3,7 @@
 
 
 //////////////////////////////////////////////////
-               //  LIBRARIES  //
+//  LIBRARIES  //
 //////////////////////////////////////////////////
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -12,55 +12,67 @@
 #include <Servo.h>
 
 //////////////////////////////////////////////////
-          //  PINS AND PARAMETERS  //
+//  PINS AND PARAMETERS  //
 //////////////////////////////////////////////////
-#define INIT_MSG "Initializing..." // Text to display on startup
-#define MODE_NAME "  SKETCH MODE   " //these are variables for the text which is displayed in different menus. 
-#define BOTTOM_TEXT " CLICK TO DRAW  " //try changing these, or making new ones and adding conditions for when they are used
+#define INIT_MSG "Initializing..."      // Text to display on startup
+#define MODE_NAME "  SKETCH MODE   "    //these are variables for the text which is displayed in different menus.
+#define BOTTOM_TEXT " CLICK TO DRAW  "  //try changing these, or making new ones and adding conditions for when they are used
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);  // Set the LCD address to 0x27 for a 16x2 display
 
-ezButton button1(14); //joystick button handler
+ezButton button1(14);  //joystick button handler
 
 // Joystick setup
-const int joystickXPin = A2;  // Connect the joystick X-axis to this analog pin
-const int joystickYPin = A1;  // Connect the joystick Y-axis to this analog pin
+const int joystickXPin = A2;              // Connect the joystick X-axis to this analog pin
+const int joystickYPin = A1;              // Connect the joystick Y-axis to this analog pin
 const int joystickButtonThreshold = 200;  // Adjust this threshold value based on your joystick
 
 // Menu parameters
-int currentCharacter = 0; //keep track of which character is currently displayed under the cursor
-int cursorPosition = 0; //keeps track of the cursor position (left to right) on the screen
-int currentPage = 0; //keeps track of the current page for menus
-const int charactersPerPage = 16; //number of characters that can fit on one row of the screen
+int currentCharacter = 0;          //keep track of which character is currently displayed under the cursor
+int cursorPosition = 0;            //keeps track of the cursor position (left to right) on the screen
+int currentPage = 0;               //keeps track of the current page for menus
+const int charactersPerPage = 16;  //number of characters that can fit on one row of the screen
 
 // Stepper motor parameters
 const int stepCount = 200;
 const int stepsPerRevolution = 2048;
 
 // initialize the stepper library for both steppers:
-Stepper xStepper(stepsPerRevolution, 6,8,7,9);
-Stepper yStepper(stepsPerRevolution, 2,4,3,5); 
+Stepper xStepper(stepsPerRevolution, 6, 8, 7, 9);
+Stepper yStepper(stepsPerRevolution, 2, 4, 3, 5);
 
-int xPins[4] = {6, 8, 7, 9};  // pins for x-motor coils
-int yPins[4] = {2, 4, 3, 5};    // pins for y-motor coils
+int xPins[4] = { 6, 8, 7, 9 };  // pins for x-motor coils
+int yPins[4] = { 2, 4, 3, 5 };  // pins for y-motor coils
 
 //Servo
-const int SERVO_PIN  = 13;
+const int SERVO_PIN = 13;
 Servo servo;
-int angle = 30; // the current angle of servo motor
+int angle = 30;  // the current angle of servo motor
 
 
 // Creates states to store what the current menu and joystick states are
 // Decoupling the state from other functions is good because it means the sensor / screen aren't hardcoded into every single action and can be handled at a higher level
-enum State { MainMenu, Editing, PrintConfirmation, Printing, SketchMode };
+enum State { MainMenu,
+             Editing,
+             PrintConfirmation,
+             Printing,
+             SketchMode };
 State currentState = SketchMode;
 State prevState = Printing;
 
-enum jState {LEFT, RIGHT, UP, DOWN, MIDDLE, UPRIGHT, UPLEFT, DOWNRIGHT, DOWNLEFT};
+enum jState { LEFT,
+              RIGHT,
+              UP,
+              DOWN,
+              MIDDLE,
+              UPRIGHT,
+              UPLEFT,
+              DOWNRIGHT,
+              DOWNLEFT };
 jState joyState = MIDDLE;
 jState prevJoyState = MIDDLE;
 
-boolean pPenOnPaper = false; // pen on paper in previous cycle
+boolean pPenOnPaper = false;  // pen on paper in previous cycle
 int lineCount = 0;
 
 int xpos = 0;
@@ -76,14 +88,14 @@ int joystickY;
 
 
 //////////////////////////////////////////////////
-               //  S E T U P  //
+//  S E T U P  //
 //////////////////////////////////////////////////
 void setup() {
   lcd.init();
   lcd.backlight();
 
   lcd.setCursor(0, 0);
-  lcd.print(INIT_MSG); // print start up message
+  lcd.print(INIT_MSG);  // print start up message
 
   pinMode(LED_BUILTIN, OUTPUT);
 
@@ -91,17 +103,17 @@ void setup() {
 
   button1.setDebounceTime(50);
 
-  servo.attach(SERVO_PIN); // attaches the servo pin to the servo object
+  servo.attach(SERVO_PIN);  // attaches the servo pin to the servo object
   servo.write(angle);
 
   plot(false);
 
-  // set the speed of the motors 
-  yStepper.setSpeed(12);    // set first stepper speed
-  xStepper.setSpeed(10);   // set second stepper speed
+  // set the speed of the motors
+  yStepper.setSpeed(12);  // set first stepper speed
+  xStepper.setSpeed(10);  // set second stepper speed
 
-  penUp(); //ensure that the servo is lifting the pen carriage away from the tape
-  homeYAxis();//lower the Y axis all the way to the bottom
+  penUp();      //ensure that the servo is lifting the pen carriage away from the tape
+  homeYAxis();  //lower the Y axis all the way to the bottom
 
   ypos = 0;
   xpos = 0;
@@ -111,7 +123,7 @@ void setup() {
 }
 
 ////////////////////////////////////////////////
-               //  L O O P  //
+//  L O O P  //
 ////////////////////////////////////////////////
 void loop() {
 
@@ -125,88 +137,84 @@ void loop() {
   joyLeft = joystickX < (512 - joystickButtonThreshold);
   joyRight = joystickX > (512 + joystickButtonThreshold);
 
-  switch (currentState) { //state machine that determines what to do with the input controls based on what mode the device is in
-  
+  switch (currentState) {  //state machine that determines what to do with the input controls based on what mode the device is in
+
     case SketchMode:
       {
-      if (prevState != SketchMode){
-         lcd.clear();
-         lcd.setCursor(0,0);
-         lcd.print(MODE_NAME); //top line of screen text
-         lcd.setCursor(0,1);
-         lcd.print(BOTTOM_TEXT); //bottom line of screen text
-         cursorPosition = 5;
-         prevState = SketchMode;
-      }
+        if (prevState != SketchMode) {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(MODE_NAME);  //top line of screen text
+          lcd.setCursor(0, 1);
+          lcd.print(BOTTOM_TEXT);  //bottom line of screen text
+          cursorPosition = 5;
+          prevState = SketchMode;
+        }
 
-      int speed_scaler = 4; // number of times to run the movement, alters speed, keep low-ish so you don't get locked into this for loop forever
-      //Serial.println(ypos);
-      for (int i=0; i < speed_scaler; i++){
-        if (joyUp) {
-            yStepper.step(3); //move up by a certain amount if the joystick is pushed up.
+        int speed_scaler = 4;  // number of times to run the movement, alters speed, keep low-ish so you don't get locked into this for loop forever
+        //Serial.println(ypos);
+        for (int i = 0; i < speed_scaler; i++) {
+          if (joyUp) {
+            yStepper.step(3);  //move up by a certain amount if the joystick is pushed up.
             ypos++;
-        }
+          }
 
-        if (joyDown) {
-          yStepper.step(-3);
-          ypos--;
-        }
+          if (joyDown) {
+            yStepper.step(-3);
+            ypos--;
+          }
 
-        if (joyLeft) {
+          if (joyLeft) {
             xStepper.step(1);
             xpos--;
-        }
+          }
 
-        if (joyRight) {
+          if (joyRight) {
             xStepper.step(-1);
             xpos++;
+          }
+        }
+
+        if (button1.isPressed()) {
+          if (!pPenOnPaper) {
+            plot(1);
+          } else {
+            plot(0);
+          }
         }
       }
 
-      if (button1.isPressed()){
-        if (!pPenOnPaper){
-          plot(1);
-        }else{
-          plot(0);
-        }
-      }
-    }
-
-    break;
+      break;
   }
 }
 
-void plot(boolean penOnPaper) { //used to handle lifting or lowering the pen on to the tape
-  if(penOnPaper){//if the pen is already up, put it down
+void plot(boolean penOnPaper) {  //used to handle lifting or lowering the pen on to the tape
+  if (penOnPaper) {              //if the pen is already up, put it down
     angle = 80;
-    } else {//if down, then lift up.
+  } else {  //if down, then lift up.
     angle = 25;
-    }
-    servo.write(angle);//actuate the servo to either position.
-    if (penOnPaper != pPenOnPaper) delay(50); //gives the servo time to move before jumping into the next action
-    pPenOnPaper = penOnPaper; //store the previous state.
+  }
+  servo.write(angle);                        //actuate the servo to either position.
+  if (penOnPaper != pPenOnPaper) delay(50);  //gives the servo time to move before jumping into the next action
+  pPenOnPaper = penOnPaper;                  //store the previous state.
 }
 
-void penUp(){ //singular command to lift the pen up
+void penUp() {  //singular command to lift the pen up
   servo.write(25);
 }
 
-void penDown(){ //singular command to put the pen down
+void penDown() {  //singular command to put the pen down
   servo.write(80);
 }
 
 void releaseMotors() {
-  for (int i = 0; i < 4; i++) { //deactivates all the motor coils
-    digitalWrite(xPins[i], 0); //just picks each motor pin and send 0 voltage
+  for (int i = 0; i < 4; i++) {  //deactivates all the motor coils
+    digitalWrite(xPins[i], 0);   //just picks each motor pin and send 0 voltage
     digitalWrite(yPins[i], 0);
   }
   plot(false);
 }
 
-void homeYAxis(){
-  yStepper.step(-3000); //lowers the pen holder to it's lowest position.
+void homeYAxis() {
+  yStepper.step(-3000);  //lowers the pen holder to it's lowest position.
 }
-
-
-
-  
