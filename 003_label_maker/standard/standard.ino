@@ -32,7 +32,7 @@
 #define VECTOR_POINTS 14
 
 #define INIT_MSG "Initializing..."     // Text to display on startup
-#define MODE_NAME "   LABELMAKER   "   // these are variables for the text which is displayed in different menus.
+#define MODE_NAME "   LABELMAKER"      // these are variables for the text which is displayed in different menus.
 #define PRINT_CONF "  PRINT LABEL?  "  // try changing these, or making new ones and adding conditions for when they are used
 #define PRINTING "    PRINTING    "    // NOTE: this text must be LCD_WIDTH characters or LESS in order to fit on the screen correctly
 
@@ -181,25 +181,17 @@ void loop() {
   bool joystickRight = joystickX > (512 + JOYSTICK_TILT_THRESHOLD);
   bool joystickUp = joystickY < (512 - JOYSTICK_TILT_THRESHOLD);
 
-  switch (currentState) {  //state machine that determines what to do with the input controls based on what mode the device is in
-
+  switch (currentState) {  // state machine that determines what to do with the input controls based on what mode the device is in
     case MainMenu:
       if (previousState != MainMenu) {
         previousState = MainMenu;
         lcd.print(MODE_NAME);
-        lcd.setCursor(0, 1);
-        lcd.print("      START     ");
-      }
-
-      lcd.setCursor(5, 1);
-
-      if (millis() % 600 < 400) {  // Blink every 500 ms
-        lcd.print(">");
-      } else {
-        lcd.print(" ");
-      }
-
-      if (joystickButton.isPressed()) {  //handles clicking options in text size setting
+        lcd.setCursor(5, 1);
+        lcd.print(">START");
+        lcd.setCursor(5, 1);                    // position the cursor at `>`
+        lcd.blink();                            // blink the `>` at the cursor
+      } else if (joystickButton.isPressed()) {  // handles clicking options in text size setting
+        lcd.noBlink();
         changeState(Edit);
       }
       break;
