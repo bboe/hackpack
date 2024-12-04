@@ -241,16 +241,15 @@ void loop() {
         Serial.println(currentCharacter);
         if (currentCharacter > 0) {
           currentCharacter--;
-          lcd.print(ALPHABET[currentCharacter]);
+        } else {
+          currentCharacter = ALPHABET_SIZE - 1;  // move to the end of the available characters
         }
+        lcd.print(ALPHABET[currentCharacter]);
         delay(JOYSTICK_TILT_DELAY);  // Delay to prevent rapid scrolling
-
-      } else if (joystickDown) {  //DOWN (next character)
+      } else if (joystickDown) {     //DOWN (next character)
         Serial.println(currentCharacter);
-        if (currentCharacter < (ALPHABET_SIZE - 1)) {
-          currentCharacter++;  //increment character value
-          lcd.print(ALPHABET[currentCharacter]);
-        }
+        currentCharacter = (currentCharacter + 1) % ALPHABET_SIZE;  // `% ALPHABET_SIZE` enables moving back to the first character when at the end
+        lcd.print(ALPHABET[currentCharacter]);
         delay(JOYSTICK_TILT_DELAY);  // Delay to prevent rapid scrolling
       } else {
         if (millis() % 600 < 450) {
