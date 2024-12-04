@@ -57,7 +57,9 @@ const uint8_t VECTORS[63][VECTOR_POINTS] = {
     hundreds = draw/don't draw ..
     200      = end
     222      = plot point
-    !! for some reason leading zeros cause problems !!
+
+    Note: Values should not be prefixed with `0` because that would indicate they are octal-literals rather than decimal-literals:
+    https://en.cppreference.com/w/cpp/language/integer_literal
   */
   { 0, 124, 140, 32, 112, 200, 200, 200, 200, 200, 200, 200, 200, 200 },    /*A*/
   { 0, 104, 134, 132, 2, 142, 140, 100, 200, 200, 200, 200, 200, 200 },     /*B*/
