@@ -341,13 +341,10 @@ int plotCharacter(struct Character &character, int beginX) {  // this function p
     if (vector == 200) {  // no more vectors in this array
       break;
     }
-    int draw = 0;
-    if (vector > 99) {
-      draw = 1;
-      vector -= 100;
-    }
-    int vectorX = vector / 10;            // get x ...
-    int vectorY = vector - vectorX * 10;  // and y
+    bool draw = vector >= 100;
+    vector %= 100;               // strip 100s place (draw setting)
+    byte vectorX = vector / 10;  // get x ...
+    byte vectorY = vector % 10;  // and y
 
     int endX = beginX + vectorX * SCALE_X;
     int endY = vectorY * SCALE_Y * 3.5;  // we multiply by 3.5 here to equalize the Y output to match X, because the Y lead screw
