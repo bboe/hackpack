@@ -370,27 +370,6 @@ void loop() {
 ////////////////////////////////////////////////
 //  HELPER FUNCTIONS  //
 ////////////////////////////////////////////////
-void plotText(String &str, int x, int y) {  //takes in our label as a string, and breaks it up by character for plotting
-  int beginX = 0;
-  Serial.println("plot string");
-  Serial.println(str);
-  for (int i = 0; i < str.length(); i++) {  //for each letter in the string (expressed as "while i is less than string length")
-    char c = char(str.charAt(i));           //store the next character to plot on it's own
-    if (byte(c) != 195) {
-      if (c == ' ') {  //if it's a space, add a space.
-        beginX += SPACE;
-      } else {
-        plotCharacter(c, x + beginX, y);
-        beginX += SPACE;  //SCALE_X is multiplied by 4 here to convert it to steps (because it normally get's multiplied by a coordinate with a max of 4)
-        if (c == 'I' || c == 'i') beginX -= (SCALE_X * 4) / 1.1;
-        if (c == ',') beginX -= (SCALE_X * 4) / 1.2;
-      }
-    }
-  }
-  Serial.println();
-  releaseMotors();
-}
-
 void plotCharacter(char c, int x, int y) {  //this receives info from plotText for which character to plot,
   // first it does some logic to make specific tweaks depending on the character, so some characters need more space, others less,
   // and some we even want to swap (in the case of space, we're swapping _ (underscore) and space so that we have something to show on the screen)
@@ -569,16 +548,27 @@ void plotLine(int newX, int newY, bool drawing) {
   positionY = newY;  // store new position
 }
 
-void setPen(bool penOnPaper) {  // used to handle lifting or lowering the pen on to the tape
-  if (penOnPaper) {             // if the pen is already up, put it down
-    angle = SERVO_ON_PAPER_ANGLE;
-  } else {  //if down, then lift up.
-    angle = SERVO_OFF_PAPER_ANGLE;
+void plotText(String &str, int x, int y) {  //takes in our label as a string, and breaks it up by character for plotting
+  int beginX = 0;
+  Serial.println("plot string");
+  Serial.println(str);
+  for (int i = 0; i < str.length(); i++) {  //for each letter in the string (expressed as "while i is less than string length")
+    char c = char(str.charAt(i));           //store the next character to plot on it's own
+    if (byte(c) != 195) {
+      if (c == ' ') {  //if it's a space, add a space.
+        beginX += SPACE;
+      } else {
+        plotCharacter(c, x + beginX, y);
+        beginX += SPACE;  //SCALE_X is multiplied by 4 here to convert it to steps (because it normally get's multiplied by a coordinate with a max of 4)
+        if (c == 'I' || c == 'i') beginX -= (SCALE_X * 4) / 1.1;
+        if (c == ',') beginX -= (SCALE_X * 4) / 1.2;
+      }
+    }
   }
-  servo.write(angle);                                 // actuate the servo to either position
-  if (penOnPaper != pPenOnPaper) delay(SERVO_DELAY);  // give the servo time to move before jumping into the next action
-  pPenOnPaper = penOnPaper;                           // store the previous state
+  Serial.println();
+  releaseMotors();
 }
+
 
 void releaseMotors() {
   const int xPins[4] = { 6, 8, 7, 9 };  // pins for x-motor coils
@@ -589,4 +579,15 @@ void releaseMotors() {
     digitalWrite(yPins[i], 0);
   }
   setPen(false);
+}
+
+void setPen(bool penOnPaper) {  // used to handle lifting or lowering the pen on to the tape
+  if (penOnPaper) {             // if the pen is already up, put it down
+    angle = SERVO_ON_PAPER_ANGLE;
+  } else {  //if down, then lift up.
+    angle = SERVO_OFF_PAPER_ANGLE;
+  }
+  servo.write(angle);                                 // actuate the servo to either position
+  if (penOnPaper != pPenOnPaper) delay(SERVO_DELAY);  // give the servo time to move before jumping into the next action
+  pPenOnPaper = penOnPaper;                           // store the previous state
 }
