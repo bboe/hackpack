@@ -204,8 +204,10 @@ void loop() {
       if (previousState == PrintConfirmation) {  // when coming back from a "no" confirmation, re-print the selected text
         previousState = Edit;
         lcd.print(":");
-        lcd.print(text);           // output the existing selected characters
-        delay(LCD_REPRINT_DELAY);  // this call is to avoid ghosting artifiacts under the blinking cursor
+        lcd.print(text);                                // output the existing selected characters
+        lcd.setCursor(chosenSize--, 0);                 // set the cursor on the last character, and decrease `chosenSize`
+        characterIndex = chosenCharacters[chosenSize];  // set index to that of the last character
+        delay(LCD_REPRINT_DELAY);                       // this call is to avoid ghosting artifiacts under the blinking cursor
         lcd.blink();
       } else if (previousState != Edit) {
         previousState = Edit;
@@ -229,8 +231,8 @@ void loop() {
           characterIndex = chosenCharacters[--chosenSize];  // set index back to previous character index
           updateChosenCharacter();
         }
-      } else if (joystickRight) {                         // joystick right (adds a character to the label)
-        chosenCharacters[chosenSize++] = characterIndex;  // add the current character to the text
+      } else if (joystickRight && chosenSize < LCD_WIDTH - 2) {  // joystick right (adds a character to the label)
+        chosenCharacters[chosenSize++] = characterIndex;         // add the current character to the text
         characterIndex = 0;
         lcd.setCursor(chosenSize + 1, 0);  // advance the cursor forward
         updateChosenCharacter();
