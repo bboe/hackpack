@@ -31,7 +31,6 @@
 //////////////////////////////////////////////////
 #include <Arduino.h>
 #include <Servo.h>
-#include "PinDefinitionsAndMore.h"  // Define macros for input and output pin etc.
 #include <IRremote.hpp>
 
 
@@ -106,7 +105,7 @@ void setup() {
 
   Serial.print(F("Ready to receive IR signals of protocols: "));
   printActiveIRProtocols(&Serial);
-  Serial.println(F("at pin " STR(9)));
+  Serial.println(F("at pin #9"));
 
   homeServos();  //set servo motors to home position
 }

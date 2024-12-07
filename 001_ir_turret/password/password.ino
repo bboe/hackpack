@@ -10,7 +10,6 @@ bool passcodeEntered = false;             // Flag to indicate if passcode has be
 //////////////////////////////////////////////////
 #include <Arduino.h>
 #include <Servo.h>
-#include "PinDefinitionsAndMore.h"  // Define macros for input and output pin etc.
 #include <IRremote.hpp>
 
 #define DECODE_NEC  //defines the type of IR transmission to decode based on the remote. See IRremote library for examples on how to decode other types of remote
@@ -79,7 +78,7 @@ void setup() {
 
   Serial.print(F("Ready to receive IR signals of protocols: "));
   printActiveIRProtocols(&Serial);
-  Serial.println(F("at pin " STR(9)));
+  Serial.println(F("at pin #9"));
 
   homeServos();
 }
