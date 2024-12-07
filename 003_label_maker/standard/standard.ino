@@ -54,6 +54,13 @@ struct Character {
   */
 };
 
+struct JoystickState {
+  bool down;
+  bool left;
+  bool right;
+  bool up;
+};
+
 // Create states to store what the current menu and joystick states are
 // Decoupling the state from other functions is good because it means the sensor / screen aren't hardcoded into every single action and can be handled at a higher level
 enum State { Edit,
@@ -137,6 +144,7 @@ struct Character tmpCharacter;  // This character is used when we need to copy a
 bool penOnPaper = false;  // current state of pen on paper
 int positionX;
 int positionY = RESET_Y_STEPS;  // ensure resetMotors lowers the Y axis all the way to the bottom
+struct JoystickState joystickState;
 
 // initialize the hardware
 ezButton joystickButton(JOYSTICK_BUTTON_PIN);  // https://arduinogetstarted.com/tutorials/arduino-button-library
@@ -178,114 +186,125 @@ void setup() {
 ////////////////////////////////////////////////
 void loop() {
   joystickButton.loop();  // the loop function must be called in order to call `isPressed`
-
-  int joystickX = analogRead(JOYSTICK_X_PIN);
-  int joystickY = analogRead(JOYSTICK_Y_PIN);
-  bool joystickDown = joystickY > (512 + JOYSTICK_TILT_THRESHOLD);
-  bool joystickLeft = joystickX < (512 - JOYSTICK_TILT_THRESHOLD);
-  bool joystickRight = joystickX > (512 + JOYSTICK_TILT_THRESHOLD);
-  bool joystickUp = joystickY < (512 - JOYSTICK_TILT_THRESHOLD);
+  getJoystickState();
 
   switch (currentState) {  // state machine that determines what to do with the input controls based on what mode the device is in
-    case MainMenu:
-      if (previousState != MainMenu) {
-        previousState = MainMenu;
-        lcd.print(F(MODE_NAME));
-        lcd.setCursor(5, 1);
-        lcd.print(F(">START"));
-        lcd.setCursor(5, 1);                    // position the cursor at `>`
-        lcd.blink();                            // blink the `>` at the cursor
-      } else if (joystickButton.isPressed()) {  // handles clicking options in text size setting
-        lcd.noBlink();
-        changeState(Edit);
-      }
-      break;
-
     case Edit:
-      // in edit, joystick directional input adds and removes characters from the string, while up and down changes characters
-      // pressing the joystick button will switch the device into the Print Confirmation mode
-      if (previousState == PrintConfirmation) {  // when coming back from a "no" confirmation, re-print the selected text
-        previousState = Edit;
-        lcd.print(F(":"));
-        lcd.print(text);                                // output the existing selected characters
-        lcd.setCursor(chosenSize--, 0);                 // set the cursor on the last character, and decrease `chosenSize`
-        characterIndex = chosenCharacters[chosenSize];  // set index to that of the last character
-        delay(LCD_REPRINT_DELAY);                       // this call is to avoid ghosting artifiacts under the blinking cursor
-        lcd.blink();
-      } else if (previousState != Edit) {
-        previousState = Edit;
-        lcd.print(F(":"));
-        lcd.setCursor(1, 0);
-        lcd.blink();
-      } else if (joystickDown) {                                // joystick down (next character)
-        characterIndex = (characterIndex + 1) % ALPHABET_SIZE;  // `% ALPHABET_SIZE` enables moving back to the first character when at the end
-        updateChosenCharacter();
-      } else if (joystickUp) {  // joystick up (previous character)
-        if (characterIndex > 0) {
-          characterIndex--;
-        } else {
-          characterIndex = ALPHABET_SIZE - 1;  // move to the end of the available characters
-        }
-        updateChosenCharacter();
-      } else if (joystickLeft) {  // joystick left (backspace)
-        if (chosenSize > 0) {
-          clearDisplay(chosenSize + 1);                     // don't clear characters we want to keep to prevent flicker
-          lcd.setCursor(chosenSize, 0);                     // put cursor back to correct location after clear
-          characterIndex = chosenCharacters[--chosenSize];  // set index back to previous character index
-          updateChosenCharacter();
-        }
-      } else if (joystickRight && chosenSize < LCD_WIDTH - 2) {  // joystick right (adds a character to the label)
-        chosenCharacters[chosenSize++] = characterIndex;         // add the current character to the text
-        characterIndex = 0;
-        lcd.setCursor(chosenSize + 1, 0);  // advance the cursor forward
-        updateChosenCharacter();
-      } else if (joystickButton.isPressed()) {              // joystick click (add character and reset alphabet scroll)
-        if (characterIndex != 0) {                          // only add non-space characters
-          chosenCharacters[chosenSize++] = characterIndex;  // add the current character to the text
-        }
-        characterIndex = 0;
-        lcd.noBlink();
-        changeState(PrintConfirmation);
-      }
+      handleEdit();
       break;
-
-    case PrintConfirmation:
-      if (previousState != PrintConfirmation) {
-        previousState = PrintConfirmation;
-        confirmAction = false;     // default confirmation to no
-        lcd.print(F(PRINT_CONF));  // print menu text
-        lcd.setCursor(3, 1);       // move cursor to the second line, 4th column
-        lcd.print(F("YES     NO"));
-        lcd.setCursor(10, 1);  // position cursor just before `NO`
-        lcd.blink();
-      } else if (joystickLeft) {  // joystick left (select yes)
-        confirmAction = true;
-        lcd.setCursor(2, 1);  // position cursor just before 'YES'
-        delay(JOYSTICK_TILT_DELAY);
-      } else if (joystickRight) {  // joystick right (select no)
-        confirmAction = false;
-        lcd.setCursor(10, 1);  // position cursor just before `NO`
-        delay(JOYSTICK_TILT_DELAY);
-      } else if (joystickButton.isPressed()) {  // joystick click (advance based on selection)
-        lcd.noBlink();
-        changeState(confirmAction ? Print : Edit);
-      }
+    case MainMenu:
+      handleMainMenu();
       break;
-
     case Print:
-      // state does not need to be checked here because this case should execute only once
-      lcd.print(F(PRINTING));
-      lcd.setCursor(0, 1);  // move cursor to second the second line
-      lcd.print(text);      // output the text to print
-
-      Serial.print(F("plot: `"));
-      Serial.print(text);
-      Serial.println(F("`"));
-
-      plotText();
-      chosenSize = 0;
-      changeState(MainMenu);
+      handlePrint();
       break;
+    case PrintConfirmation:
+      handlePrintConfirmation();
+      break;
+  }
+}
+
+
+////////////////////////////////////////////////
+//  STATE FUNCTIONS  //
+////////////////////////////////////////////////
+void handleEdit() {
+  // in edit mode, joystick directional input adds and removes characters from the string, while up and down changes characters
+  // pressing the joystick button will switch the device into the Print Confirmation mode
+  if (previousState == PrintConfirmation) {  // when coming back from a "no" confirmation, re-print the selected text
+    previousState = Edit;
+    lcd.print(F(":"));
+    lcd.print(text);                                // output the existing selected characters
+    lcd.setCursor(chosenSize--, 0);                 // set the cursor on the last character, and decrease `chosenSize`
+    characterIndex = chosenCharacters[chosenSize];  // set index to that of the last character
+    delay(LCD_REPRINT_DELAY);                       // this call is to avoid ghosting artifiacts under the blinking cursor
+    lcd.blink();
+  } else if (previousState != Edit) {
+    previousState = Edit;
+    lcd.print(F(":"));
+    lcd.setCursor(1, 0);
+    lcd.blink();
+  } else if (joystickState.down) {                          // joystick down (next character)
+    characterIndex = (characterIndex + 1) % ALPHABET_SIZE;  // `% ALPHABET_SIZE` enables moving back to the first character when at the end
+    updateChosenCharacter();
+  } else if (joystickState.up) {  // joystick up (previous character)
+    if (characterIndex > 0) {
+      characterIndex--;
+    } else {
+      characterIndex = ALPHABET_SIZE - 1;  // move to the end of the available characters
+    }
+    updateChosenCharacter();
+  } else if (joystickState.left) {  // joystick left (backspace)
+    if (chosenSize > 0) {
+      clearDisplay(chosenSize + 1);                     // don't clear characters we want to keep to prevent flicker
+      lcd.setCursor(chosenSize, 0);                     // put cursor back to correct location after clear
+      characterIndex = chosenCharacters[--chosenSize];  // set index back to previous character index
+      updateChosenCharacter();
+    }
+  } else if (joystickState.right && chosenSize < LCD_WIDTH - 2) {  // joystick right (adds a character to the label)
+    chosenCharacters[chosenSize++] = characterIndex;               // add the current character to the text
+    characterIndex = 0;
+    lcd.setCursor(chosenSize + 1, 0);  // advance the cursor forward
+    updateChosenCharacter();
+  } else if (joystickButton.isPressed()) {              // joystick click (add character and reset alphabet scroll)
+    if (characterIndex != 0) {                          // only add non-space characters
+      chosenCharacters[chosenSize++] = characterIndex;  // add the current character to the text
+    }
+    characterIndex = 0;
+    lcd.noBlink();
+    changeState(PrintConfirmation);
+  }
+}
+
+void handleMainMenu() {
+  if (previousState != MainMenu) {
+    previousState = MainMenu;
+    lcd.print(F(MODE_NAME));
+    lcd.setCursor(5, 1);
+    lcd.print(F(">START"));
+    lcd.setCursor(5, 1);                    // position the cursor at `>`
+    lcd.blink();                            // blink the `>` at the cursor
+  } else if (joystickButton.isPressed()) {  // handles clicking options in text size setting
+    lcd.noBlink();
+    changeState(Edit);
+  }
+}
+
+void handlePrint() {
+  // state does not need to be checked here because this case should execute only once
+  lcd.print(F(PRINTING));
+  lcd.setCursor(0, 1);  // move cursor to second the second line
+  lcd.print(text);      // output the text to print
+
+  Serial.print(F("plot: `"));
+  Serial.print(text);
+  Serial.println(F("`"));
+
+  plotText();
+  chosenSize = 0;
+  changeState(MainMenu);
+}
+
+void handlePrintConfirmation() {
+  if (previousState != PrintConfirmation) {
+    previousState = PrintConfirmation;
+    confirmAction = false;     // default confirmation to no
+    lcd.print(F(PRINT_CONF));  // print menu text
+    lcd.setCursor(3, 1);       // move cursor to the second line, 4th column
+    lcd.print(F("YES     NO"));
+    lcd.setCursor(10, 1);  // position cursor just before `NO`
+    lcd.blink();
+  } else if (joystickState.left) {  // joystick left (select yes)
+    confirmAction = true;
+    lcd.setCursor(2, 1);  // position cursor just before 'YES'
+    delay(JOYSTICK_TILT_DELAY);
+  } else if (joystickState.right) {  // joystick right (select no)
+    confirmAction = false;
+    lcd.setCursor(10, 1);  // position cursor just before `NO`
+    delay(JOYSTICK_TILT_DELAY);
+  } else if (joystickButton.isPressed()) {  // joystick click (advance based on selection)
+    lcd.noBlink();
+    changeState(confirmAction ? Print : Edit);
   }
 }
 
@@ -312,6 +331,15 @@ void clearDisplay(byte columnStart) {
       lcd.print(F(" "));
   }
   lcd.setCursor(0, 0);
+}
+
+void getJoystickState() {
+  int joystickX = analogRead(JOYSTICK_X_PIN);
+  int joystickY = analogRead(JOYSTICK_Y_PIN);
+  joystickState.down = joystickY > (512 + JOYSTICK_TILT_THRESHOLD);
+  joystickState.left = joystickX < (512 - JOYSTICK_TILT_THRESHOLD);
+  joystickState.right = joystickX > (512 + JOYSTICK_TILT_THRESHOLD);
+  joystickState.up = joystickY < (512 - JOYSTICK_TILT_THRESHOLD);
 }
 
 int plotCharacter(struct Character &character, int beginX) {  // this function passes the vectors from a character though the plotLine function to draw it
