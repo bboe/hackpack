@@ -2,10 +2,10 @@
 //  LIBRARIES  //
 //////////////////////////////////////////////////
 #include <LiquidCrystal_I2C.h>
+#include <OneButton.h>
 #include <Servo.h>
 #include <Stepper.h>
 #include <Wire.h>
-#include <ezButton.h>
 
 
 //////////////////////////////////////////////////
@@ -141,14 +141,15 @@ State previousState;
 struct Character tmpCharacter;  // This character is used when we need to copy a character from PROGMEM
 
 // hardware variables
+bool joystickClicked;
 bool penOnPaper = false;  // current state of pen on paper
 int positionX;
 int positionY = RESET_Y_STEPS;  // ensure resetMotors lowers the Y axis all the way to the bottom
 struct JoystickState joystickState;
 
 // initialize the hardware
-ezButton joystickButton(JOYSTICK_BUTTON_PIN);  // https://arduinogetstarted.com/tutorials/arduino-button-library
-LiquidCrystal_I2C lcd(0x27, LCD_WIDTH, 2);     // Set the LCD address to 0x27 for a 16x2 display
+LiquidCrystal_I2C lcd(0x27, LCD_WIDTH, 2);  // Set the LCD address to 0x27 for a 16x2 display
+OneButton joystickButton;
 Servo servo;
 Stepper xStepper(STEPPER_STEPS_PER_REVOLUTION, 6, 8, 7, 9);
 Stepper yStepper(STEPPER_STEPS_PER_REVOLUTION, 2, 4, 3, 5);
@@ -166,8 +167,12 @@ void setup() {
   lcd.setCursor(0, 0);
   lcd.print(F(INIT_MSG));  // print start up message
 
-  Serial.println(F("initializing hardware"));
-  joystickButton.setDebounceTime(50);  // debounce prevents the joystick button from triggering twice when clicked
+  joystickButton.setup(JOYSTICK_BUTTON_PIN, INPUT_PULLUP, true);
+  joystickButton.attachClick([]() {
+    joystickClicked = true;
+  });
+
+  Serial.println(F("initializing motors"));
   servo.attach(SERVO_PIN);             // attaches the servo pin to the servo object
   servo.write(SERVO_OFF_PAPER_ANGLE);  // ensure that the servo is lifting the pen carriage away from the tape
   xStepper.setSpeed(10);               // set x stepper speed (these should stay the same)
@@ -185,7 +190,8 @@ void setup() {
 //  LOOP  //
 ////////////////////////////////////////////////
 void loop() {
-  joystickButton.loop();  // the loop function must be called in order to call `isPressed`
+  joystickClicked = false;
+  joystickButton.tick();
   getJoystickState();
 
   switch (currentState) {  // state machine that determines what to do with the input controls based on what mode the device is in
@@ -246,7 +252,7 @@ void handleEdit() {
     characterIndex = 0;
     lcd.setCursor(chosenSize + 1, 0);  // advance the cursor forward
     updateChosenCharacter();
-  } else if (joystickButton.isPressed()) {              // joystick click (add character and reset alphabet scroll)
+  } else if (joystickClicked) {                         // joystick click (add character and reset alphabet scroll)
     if (characterIndex != 0) {                          // only add non-space characters
       chosenCharacters[chosenSize++] = characterIndex;  // add the current character to the text
     }
@@ -262,9 +268,9 @@ void handleMainMenu() {
     lcd.print(F(MODE_NAME));
     lcd.setCursor(5, 1);
     lcd.print(F(">START"));
-    lcd.setCursor(5, 1);                    // position the cursor at `>`
-    lcd.blink();                            // blink the `>` at the cursor
-  } else if (joystickButton.isPressed()) {  // handles clicking options in text size setting
+    lcd.setCursor(5, 1);         // position the cursor at `>`
+    lcd.blink();                 // blink the `>` at the cursor
+  } else if (joystickClicked) {  // handles clicking options in text size setting
     lcd.noBlink();
     changeState(Edit);
   }
@@ -302,7 +308,7 @@ void handlePrintConfirmation() {
     confirmAction = false;
     lcd.setCursor(10, 1);  // position cursor just before `NO`
     delay(JOYSTICK_TILT_DELAY);
-  } else if (joystickButton.isPressed()) {  // joystick click (advance based on selection)
+  } else if (joystickClicked) {  // joystick click (advance based on selection)
     lcd.noBlink();
     changeState(confirmAction ? Print : Edit);
   }
