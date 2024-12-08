@@ -38,7 +38,17 @@
 #define PRINT_CONF "  PRINT LABEL?"  // try changing these, or making new ones and adding conditions for when they are used
 #define PRINTING "    PRINTING"      // NOTE: this text must be LCD_WIDTH characters or LESS in order to fit on the screen correctly
 
-// structs and enums
+// enums and structs
+enum JoystickButtonState { NEUTRAL,
+                           SINGLE_CLICK,
+                           DOUBLE_CLICK,
+                           LONG_PRESS };
+
+enum MenuState { Edit,
+                 MainMenu,
+                 Print,
+                 PrintConfirmation };
+
 struct Character {
   char character;
   byte vectors[VECTOR_POINTS];
@@ -59,14 +69,9 @@ struct JoystickState {
   bool left;
   bool right;
   bool up;
+  JoystickButtonState buttonState;
 };
 
-// Create states to store what the current menu and joystick states are
-// Decoupling the state from other functions is good because it means the sensor / screen aren't hardcoded into every single action and can be handled at a higher level
-enum State { Edit,
-             MainMenu,
-             Print,
-             PrintConfirmation };
 
 // constants
 const PROGMEM struct Character CHARACTERS[] = {
@@ -136,12 +141,11 @@ byte characterIndex = 0;               // keep track of which character is curre
 byte chosenCharacters[LCD_WIDTH - 1];  // keep track of which characters are selected
 byte chosenSize = 0;                   // keep track of how many characters have been selected
 char text[LCD_WIDTH];                  // buffer to hold the text we're plotting, which requires an extra char for '\0'
-State currentState = Print;            // The initial value needs to be anything other than `MainMenu`
-State previousState;
+MenuState currentState = Print;        // The initial value needs to be anything other than `MainMenu`
+MenuState previousState;
 struct Character tmpCharacter;  // This character is used when we need to copy a character from PROGMEM
 
 // hardware variables
-bool joystickClicked;
 bool penOnPaper = false;  // current state of pen on paper
 int positionX;
 int positionY = RESET_Y_STEPS;  // ensure resetMotors lowers the Y axis all the way to the bottom
@@ -167,9 +171,14 @@ void setup() {
   lcd.setCursor(0, 0);
   lcd.print(F(INIT_MSG));  // print start up message
 
+  // set up joystick callbacks
+  // Lambda functions are used here because we don't need complex logic in the callbacks
   joystickButton.setup(JOYSTICK_BUTTON_PIN, INPUT_PULLUP, true);
   joystickButton.attachClick([]() {
-    joystickClicked = true;
+    joystickState.buttonState = SINGLE_CLICK;
+  });
+  joystickButton.attachLongPressStart([]() {
+    joystickState.buttonState = LONG_PRESS;
   });
 
   Serial.println(F("initializing motors"));
@@ -190,8 +199,16 @@ void setup() {
 //  LOOP  //
 ////////////////////////////////////////////////
 void loop() {
-  joystickClicked = false;
+  joystickState.buttonState = NEUTRAL;  // Because callbacks are used to set this value, we need to explicitly clear it before calling tick
   joystickButton.tick();
+
+  if (joystickState.buttonState == LONG_PRESS) {  // On long press immediately change to the main menu
+    if (currentState != MainMenu) {
+      changeState(MainMenu);
+      return;
+    }
+  }
+
   getJoystickState();
 
   switch (currentState) {  // state machine that determines what to do with the input controls based on what mode the device is in
@@ -217,18 +234,12 @@ void loop() {
 void handleEdit() {
   // in edit mode, joystick directional input adds and removes characters from the string, while up and down changes characters
   // pressing the joystick button will switch the device into the Print Confirmation mode
-  if (previousState == PrintConfirmation) {  // when coming back from a "no" confirmation, re-print the selected text
+  if (previousState != Edit) {
     previousState = Edit;
     lcd.print(F(":"));
-    lcd.print(text);                                // output the existing selected characters
-    lcd.setCursor(chosenSize--, 0);                 // set the cursor on the last character, and decrease `chosenSize`
-    characterIndex = chosenCharacters[chosenSize];  // set index to that of the last character
-    delay(LCD_REPRINT_DELAY);                       // this call is to avoid ghosting artifiacts under the blinking cursor
-    lcd.blink();
-  } else if (previousState != Edit) {
-    previousState = Edit;
-    lcd.print(F(":"));
-    lcd.setCursor(1, 0);
+    lcd.print(text);                   // output the existing selected characters
+    lcd.setCursor(chosenSize + 1, 0);  // set the cursor on the last character
+    delay(LCD_REPRINT_DELAY);          // this call is to avoid ghosting artifiacts under the blinking cursor
     lcd.blink();
   } else if (joystickState.down) {                          // joystick down (next character)
     characterIndex = (characterIndex + 1) % ALPHABET_SIZE;  // `% ALPHABET_SIZE` enables moving back to the first character when at the end
@@ -252,12 +263,7 @@ void handleEdit() {
     characterIndex = 0;
     lcd.setCursor(chosenSize + 1, 0);  // advance the cursor forward
     updateChosenCharacter();
-  } else if (joystickClicked) {                         // joystick click (add character and reset alphabet scroll)
-    if (characterIndex != 0) {                          // only add non-space characters
-      chosenCharacters[chosenSize++] = characterIndex;  // add the current character to the text
-    }
-    characterIndex = 0;
-    lcd.noBlink();
+  } else if (joystickState.buttonState == SINGLE_CLICK && (chosenSize > 0 || characterIndex > 0)) {  // move to print confirmation if something has been selected
     changeState(PrintConfirmation);
   }
 }
@@ -268,16 +274,16 @@ void handleMainMenu() {
     lcd.print(F(MODE_NAME));
     lcd.setCursor(5, 1);
     lcd.print(F(">START"));
-    lcd.setCursor(5, 1);         // position the cursor at `>`
-    lcd.blink();                 // blink the `>` at the cursor
-  } else if (joystickClicked) {  // handles clicking options in text size setting
-    lcd.noBlink();
+    lcd.setCursor(5, 1);                                   // position the cursor at `>`
+    lcd.blink();                                           // blink the `>` at the cursor
+  } else if (joystickState.buttonState == SINGLE_CLICK) {  // handles clicking options in text size setting
     changeState(Edit);
   }
 }
 
 void handlePrint() {
   // state does not need to be checked here because this case should execute only once
+  chosenCharacters[chosenSize++] = characterIndex;  // the last selected character needs to be added
   lcd.print(F(PRINTING));
   lcd.setCursor(0, 1);  // move cursor to second the second line
   lcd.print(text);      // output the text to print
@@ -287,7 +293,7 @@ void handlePrint() {
   Serial.println(F("`"));
 
   plotText();
-  chosenSize = 0;
+  --chosenSize;  // reduce chosen size back down so edit is in the right place
   changeState(MainMenu);
 }
 
@@ -308,8 +314,7 @@ void handlePrintConfirmation() {
     confirmAction = false;
     lcd.setCursor(10, 1);  // position cursor just before `NO`
     delay(JOYSTICK_TILT_DELAY);
-  } else if (joystickClicked) {  // joystick click (advance based on selection)
-    lcd.noBlink();
+  } else if (joystickState.buttonState == SINGLE_CLICK) {  // joystick click (advance based on selection)
     changeState(confirmAction ? Print : Edit);
   }
 }
@@ -318,13 +323,14 @@ void handlePrintConfirmation() {
 ////////////////////////////////////////////////
 //  HELPER FUNCTIONS  //
 ////////////////////////////////////////////////
-void changeState(State newState) {  // transition between program states and clear the display
+void changeState(MenuState newState) {  // transition between program states and clear the display
   Serial.print(F("Changing state "));
   Serial.print(currentState);
   Serial.print(F("->"));
   Serial.println(newState);
   previousState = currentState;
   currentState = newState;
+  lcd.noBlink();
   clearDisplay(0);
 }
 
