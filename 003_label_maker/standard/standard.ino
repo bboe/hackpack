@@ -1,6 +1,7 @@
 //////////////////////////////////////////////////
 //  LIBRARIES  //
 //////////////////////////////////////////////////
+#include <EEPROM.h>
 #include <LiquidCrystal_I2C.h>
 #include <OneButton.h>
 #include <Servo.h>
@@ -12,6 +13,7 @@
 //  PINS AND PARAMETERS  //
 //////////////////////////////////////////////////
 #define ALPHABET_SIZE (sizeof(CHARACTERS) / sizeof(struct Character))
+#define EEPROM_HEADER 0xBB0E         // Change this value to reinitialize the EEPROM
 #define JOYSTICK_BUTTON_PIN 14       // Connect the joystick button to this pin
 #define JOYSTICK_TILT_DELAY 250      // Milliseconds to to delay after detecting joystick tilt
 #define JOYSTICK_TILT_THRESHOLD 200  // Adjust this threshold value based on your joystick
@@ -81,8 +83,13 @@ struct JoystickState {
   JoystickButtonState buttonState;
 };
 
+struct SaveHeader {
+  byte saveCount;
+  unsigned int header;
+};
 
 // constants
+const PROGMEM char INITIAL_SAVED_TEXTS[][LCD_WIDTH] = { "HACK PACK!", "CRUNCH LABS", "MARK ROBER", "LABEL MAKER", "FAT GUS", "SPACE SELFIE" };
 const PROGMEM struct Character CHARACTERS[] = {
   { ' ', { VECTOR_END } },
   { 'A', { 0, 124, 140, 32, 112, VECTOR_END } },
@@ -150,11 +157,13 @@ bool confirmAction;                    // keeps track of yes or no confirmations
 byte chosenCharacters[LCD_WIDTH - 1];  // keeps track of which characters are selected
 byte chosenSize = 0;                   // keeps track of how many characters have been selected
 char characterIndex = 0;               // keeps track of which character is currently displayed under the cursor
+char savedText[LCD_WIDTH];             // buffer to hold text when interacting with EEPROM
 char selectionIndex;                   // keeps track of selection index (e.g., menu selection choice)
 char text[LCD_WIDTH];                  // buffer to hold the text we're plotting, which requires an extra char for '\0'
 MenuState currentState = Print;        // The initial value needs to be anything other than `MainMenu`
 MenuState previousState;
 struct Character tmpCharacter;  // This character is used when we need to copy a character from PROGMEM
+struct SaveHeader saveHeader;
 
 // hardware variables
 bool penOnPaper = false;  // current state of pen on paper
@@ -304,7 +313,42 @@ void handleEdit() {
 void handleLoad() {
   if (previousState != Load) {
     previousState = Load;
-    lcd.print(F("Load"));
+    byte saveCount = getSavedTextCount();
+    if (saveCount == 0) {
+      lcd.print(F("No text saved"));
+      lcd.setCursor(0, 1);
+      lcd.print(F("Returning..."));
+      delay(3000);
+      changeState(MainMenu);
+    } else {
+      selectionIndex = 0;
+      lcd.print(F("Load?  YES  NO"));
+      lcd.setCursor(0, 1);
+      lcd.print(readSavedText(0));
+      lcd.setCursor(11, 0);
+      lcd.blink();
+    }
+  } else if (joystickState.down) {
+    selectionIndex = incrementWithin(selectionIndex + 1, saveHeader.saveCount);
+    outputSavedText();
+  } else if (joystickState.left) {
+    confirmAction = true;
+    lcd.setCursor(6, 0);  // position cursor just before 'YES'
+    delay(JOYSTICK_TILT_DELAY);
+  } else if (joystickState.right) {
+    confirmAction = false;
+    lcd.setCursor(11, 0);  // position cursor just before 'NO'
+    delay(JOYSTICK_TILT_DELAY);
+  } else if (joystickState.up) {
+    selectionIndex = incrementWithin(selectionIndex - 1, saveHeader.saveCount);
+    outputSavedText();
+  } else if (joystickState.buttonState == SINGLE_CLICK) {
+    if (confirmAction) {
+      restoreSavedText();
+      changeState(Edit);
+    } else {
+      changeState(MainMenu);
+    }
   }
 }
 
@@ -349,7 +393,6 @@ void handlePrint() {
 void handlePrintConfirmation() {
   if (previousState != PrintConfirmation) {
     previousState = PrintConfirmation;
-    confirmAction = false;     // default confirmation to no
     lcd.print(F(PRINT_CONF));  // print menu text
     lcd.setCursor(3, 1);       // move cursor to the second line, 4th column
     lcd.print(F("YES     NO"));
@@ -386,6 +429,7 @@ void changeState(MenuState newState) {  // transition between program states and
   Serial.println(newState);
   previousState = currentState;
   currentState = newState;
+  confirmAction = false;  // default confirmation to no
   lcd.noBlink();
   clearDisplay(0, 0);
 }
@@ -410,8 +454,41 @@ void getJoystickState() {
   joystickState.up = joystickY < (512 - JOYSTICK_TILT_THRESHOLD);
 }
 
+byte getSavedTextCount() {
+  EEPROM.get(0, saveHeader);
+  if (saveHeader.header != EEPROM_HEADER) {
+    saveHeader = { 0, EEPROM_HEADER };
+    Serial.println("Invalid EEPROM. Initializing.");
+    initializeSavedTexts();
+  }
+  Serial.print("saves in EEPROM: ");
+  Serial.println(saveHeader.saveCount);
+  return saveHeader.saveCount;
+}
+
 char incrementWithin(char value, byte size) {  // Ensure value is positive before taking its mod to avoid negative results
   return (value + size) % size;
+}
+
+void initializeSavedTexts() {
+  for (byte index = 0; index < sizeof(INITIAL_SAVED_TEXTS) / LCD_WIDTH; ++index) {
+    memcpy_P(savedText, INITIAL_SAVED_TEXTS[index], LCD_WIDTH);
+    writeSavedText(index);
+  }
+  EEPROM.put(0, saveHeader);
+}
+
+byte lookupCharacterIndex(char character) {
+  // This function may seem relatively inefficient, however, alphabet size is relatively small (<256) so it'll still happen really fast
+  // and the alternative would be to store each index into CHARACTERS. The latter would require EEPROM to be reset should the alphabet change.
+  byte index;
+  for (index = 0; index < ALPHABET_SIZE; ++index) {
+    memcpy_P(&tmpCharacter, &CHARACTERS[index], sizeof(struct Character));
+    if (tmpCharacter.character == character) {
+      break;
+    }
+  }
+  return (index == ALPHABET_SIZE) ? 0 : index;  // return 0 index if the character isn't found
 }
 
 void outputMenuOption() {
@@ -419,6 +496,13 @@ void outputMenuOption() {
   lcd.print(F(">"));
   lcd.print(MENU_OPTIONS[selectionIndex].title);
   lcd.setCursor(5, 1);  // position the cursor at `>`
+}
+
+void outputSavedText() {
+  clearDisplay(0, 1);
+  lcd.print(readSavedText(selectionIndex));
+  lcd.setCursor(confirmAction ? 6 : 11, 0);
+  delay(JOYSTICK_TILT_DELAY);
 }
 
 int plotCharacter(struct Character &character, int beginX) {  // this function passes the vectors from a character though the plotLine function to draw it
@@ -521,6 +605,10 @@ void plotText() {  // breaks up the input by character for plotting
   resetMotors();
 }
 
+char *readSavedText(byte position) {
+  return EEPROM.get(sizeof(saveHeader) + position * LCD_WIDTH, savedText);
+}
+
 void resetMotors() {
   const int xPins[4] = { 6, 8, 7, 9 };  // pins for x-motor coils
   const int yPins[4] = { 2, 4, 3, 5 };  // pins for y-motor coils
@@ -534,6 +622,16 @@ void resetMotors() {
     digitalWrite(xPins[i], 0);   // picks each motor pin and drops voltage to 0
     digitalWrite(yPins[i], 0);
   }
+}
+
+void restoreSavedText() {
+  chosenSize = 0;
+  while (savedText[chosenSize] != '\0') {
+    chosenCharacters[chosenSize] = lookupCharacterIndex(savedText[chosenSize]);
+    ++chosenSize;
+  }
+  memcpy(text, savedText, chosenSize + 1);
+  characterIndex = chosenCharacters[--chosenSize];
 }
 
 void setPen(bool toPaper) {  // used to handle lifting or lowering the pen on to the tape
@@ -551,4 +649,9 @@ void updateChosenCharacter() {  // output the chosen character to the LCD and se
   lcd.print(tmpCharacter.character);
   lcd.setCursor(chosenSize + 1, 0);  // +1 is used here to account for the `:` character
   delay(JOYSTICK_TILT_DELAY);        // delay to prevent rapid scrolling from holding the joystick
+}
+
+void writeSavedText(byte position) {
+  EEPROM.put(sizeof(saveHeader) + position * LCD_WIDTH, savedText);
+  saveHeader.saveCount = position + 1;
 }
