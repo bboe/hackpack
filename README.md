@@ -28,4 +28,5 @@
 ## Repository Branches
 
 - [main](https://github.com/bboe/hackpack/tree/main): should reflect what is available in the CrunchLabs IDE
-- [bboe](https://github.com/bboe/hackpack/tree/bboe): my improvements to said projects
+- [base](https://github.com/bboe/hackpack/tree/base): minor changes on top of main which all other branches are based off of
+- [bboe](https://github.com/bboe/hackpack/tree/bboe): accumulation of my improvements
