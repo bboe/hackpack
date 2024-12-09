@@ -414,7 +414,33 @@ void handlePrintConfirmation() {
 void handleSave() {
   if (previousState != Save) {
     previousState = Save;
-    lcd.print(F("Save"));
+    selectionIndex = 0;
+    if (chosenSize == 0 && characterIndex == 0) {
+      lcd.print(F("Nothing to save"));
+      lcd.setCursor(0, 1);
+      lcd.print(F("Returning..."));
+      delay(3000);
+      changeState(MainMenu);
+    } else {
+      lcd.print(F("Save?  YES  NO"));
+      lcd.setCursor(0, 1);
+      lcd.print(text);
+      lcd.setCursor(11, 0);
+      lcd.blink();
+    }
+  } else if (joystickState.left) {
+    confirmAction = true;
+    lcd.setCursor(6, 0);  // position cursor just before 'YES'
+    delay(JOYSTICK_TILT_DELAY);
+  } else if (joystickState.right) {
+    confirmAction = false;
+    lcd.setCursor(11, 0);  // position cursor just before 'NO'
+    delay(JOYSTICK_TILT_DELAY);
+  } else if (joystickState.buttonState == SINGLE_CLICK) {
+    if (confirmAction) {
+      saveText();
+    }
+    changeState(MainMenu);
   }
 }
 
@@ -632,6 +658,18 @@ void restoreSavedText() {
   }
   memcpy(text, savedText, chosenSize + 1);
   characterIndex = chosenCharacters[--chosenSize];
+}
+
+void saveText() {
+  // save text to the end of the saved text list (this could error when out of memory)
+  int index = getSavedTextCount();
+  memcpy(savedText, text, LCD_WIDTH);
+  Serial.print(F("Saving text '"));
+  Serial.print(savedText);
+  Serial.print(F("' to index "));
+  Serial.println(index);
+  writeSavedText(index);
+  EEPROM.put(0, saveHeader);
 }
 
 void setPen(bool toPaper) {  // used to handle lifting or lowering the pen on to the tape
