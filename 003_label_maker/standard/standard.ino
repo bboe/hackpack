@@ -177,6 +177,9 @@ void setup() {
   joystickButton.attachClick([]() {
     joystickState.buttonState = SINGLE_CLICK;
   });
+  joystickButton.attachDoubleClick([]() {
+    joystickState.buttonState = DOUBLE_CLICK;
+  });
   joystickButton.attachLongPressStart([]() {
     joystickState.buttonState = LONG_PRESS;
   });
@@ -265,6 +268,13 @@ void handleEdit() {
     updateChosenCharacter();
   } else if (joystickState.buttonState == SINGLE_CLICK && (chosenSize > 0 || characterIndex > 0)) {  // move to print confirmation if something has been selected
     changeState(PrintConfirmation);
+  } else if (joystickState.buttonState == DOUBLE_CLICK) {
+    characterIndex = 0;
+    chosenSize = 0;
+    text[0] = '\0';
+    clearDisplay(1, 0);
+    lcd.setCursor(1, 0);
+    updateChosenCharacter();
   }
 }
 
