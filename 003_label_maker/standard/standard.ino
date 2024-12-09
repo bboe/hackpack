@@ -266,7 +266,39 @@ void loop() {
 void handleDelete() {
   if (previousState != Delete) {
     previousState = Delete;
-    lcd.print(F("Delete"));
+    if (getSavedTextCount() == 0) {
+      lcd.print(F("No text saved"));
+      lcd.setCursor(0, 1);
+      lcd.print(F("Returning..."));
+      delay(3000);
+      changeState(MainMenu);
+    } else {
+      selectionIndex = 0;
+      lcd.print(F("Delete?  YES  NO"));
+      lcd.setCursor(0, 1);
+      lcd.print(readSavedText(0));
+      lcd.setCursor(13, 0);
+      lcd.blink();
+    }
+  } else if (joystickState.down) {
+    selectionIndex = incrementWithin(selectionIndex + 1, saveHeader.saveCount);
+    outputSavedText(confirmAction ? 8 : 13);
+  } else if (joystickState.left) {
+    confirmAction = true;
+    lcd.setCursor(8, 0);  // position cursor just before 'YES'
+    delay(JOYSTICK_TILT_DELAY);
+  } else if (joystickState.right) {
+    confirmAction = false;
+    lcd.setCursor(13, 0);  // position cursor just before 'NO'
+    delay(JOYSTICK_TILT_DELAY);
+  } else if (joystickState.up) {
+    selectionIndex = incrementWithin(selectionIndex - 1, saveHeader.saveCount);
+    outputSavedText(confirmAction ? 8 : 13);
+  } else if (joystickState.buttonState == SINGLE_CLICK) {
+    if (confirmAction) {
+      deleteSavedText();
+    }
+    changeState(MainMenu);
   }
 }
 
@@ -330,7 +362,7 @@ void handleLoad() {
     }
   } else if (joystickState.down) {
     selectionIndex = incrementWithin(selectionIndex + 1, saveHeader.saveCount);
-    outputSavedText();
+    outputSavedText(confirmAction ? 6 : 11);
   } else if (joystickState.left) {
     confirmAction = true;
     lcd.setCursor(6, 0);  // position cursor just before 'YES'
@@ -341,7 +373,7 @@ void handleLoad() {
     delay(JOYSTICK_TILT_DELAY);
   } else if (joystickState.up) {
     selectionIndex = incrementWithin(selectionIndex - 1, saveHeader.saveCount);
-    outputSavedText();
+    outputSavedText(confirmAction ? 6 : 11);
   } else if (joystickState.buttonState == SINGLE_CLICK) {
     if (confirmAction) {
       restoreSavedText();
@@ -471,6 +503,15 @@ void clearDisplay(byte columnStart, byte rowStart) {
   lcd.setCursor(0, rowStart);
 }
 
+void deleteSavedText() {
+  // overwrite the current index with the last saved text to minimize swaps and avoid gaps
+  byte lastIndex = saveHeader.saveCount - 1;
+  readSavedText(lastIndex);
+  writeSavedText(selectionIndex);
+  saveHeader.saveCount = lastIndex;
+  EEPROM.put(0, saveHeader);
+}
+
 void getJoystickState() {
   int joystickX = analogRead(JOYSTICK_X_PIN);
   int joystickY = analogRead(JOYSTICK_Y_PIN);
@@ -524,10 +565,10 @@ void outputMenuOption() {
   lcd.setCursor(5, 1);  // position the cursor at `>`
 }
 
-void outputSavedText() {
+void outputSavedText(byte cursorPosition) {
   clearDisplay(0, 1);
   lcd.print(readSavedText(selectionIndex));
-  lcd.setCursor(confirmAction ? 6 : 11, 0);
+  lcd.setCursor(cursorPosition, 0);
   delay(JOYSTICK_TILT_DELAY);
 }
 
