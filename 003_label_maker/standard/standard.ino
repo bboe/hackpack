@@ -19,6 +19,7 @@
 #define JOYSTICK_Y_PIN A1            // Connect the joystick Y-axis to this analog pin
 #define LCD_REPRINT_DELAY 250        // Milliseconds to wait after reprint to avoid ghosting
 #define LCD_WIDTH 16
+#define MENU_SIZE (sizeof(MENU_OPTIONS) / sizeof(struct MenuOption))
 #define RESET_Y_STEPS 2500  // The number of steps needed to move the pen holder all the way to the bottom
 #define SCALE_X 230         // these are multiplied against the stored coordinate (between 0 and 4) to get the actual number of steps moved
 #define SCALE_Y 230         // for example, if this is 230(default), then 230(scale) x 4(max coordinate) = 920 (motor steps)
@@ -44,10 +45,13 @@ enum JoystickButtonState { NEUTRAL,
                            DOUBLE_CLICK,
                            LONG_PRESS };
 
-enum MenuState { Edit,
+enum MenuState { Delete,
+                 Edit,
+                 Load,
                  MainMenu,
                  Print,
-                 PrintConfirmation };
+                 PrintConfirmation,
+                 Save };
 
 struct Character {
   char character;
@@ -62,6 +66,11 @@ struct Character {
     Note: Values should not be prefixed with `0` because that would indicate they are octal-literals rather than decimal-literals:
     https://en.cppreference.com/w/cpp/language/integer_literal
   */
+};
+
+struct MenuOption {
+  const char *title;
+  const MenuState state;
 };
 
 struct JoystickState {
@@ -134,12 +143,14 @@ const PROGMEM struct Character CHARACTERS[] = {
   { '~', { 0, 140, 144, 104, 100, 13, 113, 33, 133, 32, 131, 111, 112, 132 } },  // Open mouth Smiley
   { '$', { 20, 142, 143, 134, 123, 114, 103, 102, 120, VECTOR_END } },           // Heart
 };
+const struct MenuOption MENU_OPTIONS[] = { { "START", Edit }, { "LOAD", Load }, { "SAVE", Save }, { "DELETE", Delete } };
 
 // menu variables
 bool confirmAction;                    // keeps track of yes or no confirmations
-byte characterIndex = 0;               // keep track of which character is currently displayed under the cursor
-byte chosenCharacters[LCD_WIDTH - 1];  // keep track of which characters are selected
-byte chosenSize = 0;                   // keep track of how many characters have been selected
+byte chosenCharacters[LCD_WIDTH - 1];  // keeps track of which characters are selected
+byte chosenSize = 0;                   // keeps track of how many characters have been selected
+char characterIndex = 0;               // keeps track of which character is currently displayed under the cursor
+char selectionIndex;                   // keeps track of selection index (e.g., menu selection choice)
 char text[LCD_WIDTH];                  // buffer to hold the text we're plotting, which requires an extra char for '\0'
 MenuState currentState = Print;        // The initial value needs to be anything other than `MainMenu`
 MenuState previousState;
@@ -215,8 +226,14 @@ void loop() {
   getJoystickState();
 
   switch (currentState) {  // state machine that determines what to do with the input controls based on what mode the device is in
+    case Delete:
+      handleDelete();
+      break;
     case Edit:
       handleEdit();
+      break;
+    case Load:
+      handleLoad();
       break;
     case MainMenu:
       handleMainMenu();
@@ -227,6 +244,9 @@ void loop() {
     case PrintConfirmation:
       handlePrintConfirmation();
       break;
+    case Save:
+      handleSave();
+      break;
   }
 }
 
@@ -234,6 +254,13 @@ void loop() {
 ////////////////////////////////////////////////
 //  STATE FUNCTIONS  //
 ////////////////////////////////////////////////
+void handleDelete() {
+  if (previousState != Delete) {
+    previousState = Delete;
+    lcd.print(F("Delete"));
+  }
+}
+
 void handleEdit() {
   // in edit mode, joystick directional input adds and removes characters from the string, while up and down changes characters
   // pressing the joystick button will switch the device into the Print Confirmation mode
@@ -244,19 +271,15 @@ void handleEdit() {
     lcd.setCursor(chosenSize + 1, 0);  // set the cursor on the last character
     delay(LCD_REPRINT_DELAY);          // this call is to avoid ghosting artifiacts under the blinking cursor
     lcd.blink();
-  } else if (joystickState.down) {                          // joystick down (next character)
-    characterIndex = (characterIndex + 1) % ALPHABET_SIZE;  // `% ALPHABET_SIZE` enables moving back to the first character when at the end
+  } else if (joystickState.down) {  // joystick down (next character)
+    characterIndex = incrementWithin(characterIndex + 1, ALPHABET_SIZE);
     updateChosenCharacter();
   } else if (joystickState.up) {  // joystick up (previous character)
-    if (characterIndex > 0) {
-      characterIndex--;
-    } else {
-      characterIndex = ALPHABET_SIZE - 1;  // move to the end of the available characters
-    }
+    characterIndex = incrementWithin(characterIndex - 1, ALPHABET_SIZE);
     updateChosenCharacter();
   } else if (joystickState.left) {  // joystick left (backspace)
     if (chosenSize > 0) {
-      clearDisplay(chosenSize + 1);                     // don't clear characters we want to keep to prevent flicker
+      clearDisplay(chosenSize + 1, 0);                  // don't clear characters we want to keep to prevent flicker
       lcd.setCursor(chosenSize, 0);                     // put cursor back to correct location after clear
       characterIndex = chosenCharacters[--chosenSize];  // set index back to previous character index
       updateChosenCharacter();
@@ -278,16 +301,32 @@ void handleEdit() {
   }
 }
 
+void handleLoad() {
+  if (previousState != Load) {
+    previousState = Load;
+    lcd.print(F("Load"));
+  }
+}
+
 void handleMainMenu() {
   if (previousState != MainMenu) {
     previousState = MainMenu;
+    selectionIndex = 0;
     lcd.print(F(MODE_NAME));
-    lcd.setCursor(5, 1);
-    lcd.print(F(">START"));
-    lcd.setCursor(5, 1);                                   // position the cursor at `>`
-    lcd.blink();                                           // blink the `>` at the cursor
+    outputMenuOption();
+    lcd.blink();  // blink the `>` at the cursor
+  } else if (joystickState.down) {
+    selectionIndex = incrementWithin(selectionIndex + 1, MENU_SIZE);
+    clearDisplay(0, 1);
+    outputMenuOption();
+    delay(JOYSTICK_TILT_DELAY);
+  } else if (joystickState.up) {
+    selectionIndex = incrementWithin(selectionIndex - 1, MENU_SIZE);
+    clearDisplay(0, 1);
+    outputMenuOption();
+    delay(JOYSTICK_TILT_DELAY);
   } else if (joystickState.buttonState == SINGLE_CLICK) {  // handles clicking options in text size setting
-    changeState(Edit);
+    changeState(MENU_OPTIONS[selectionIndex].state);
   }
 }
 
@@ -329,6 +368,13 @@ void handlePrintConfirmation() {
   }
 }
 
+void handleSave() {
+  if (previousState != Save) {
+    previousState = Save;
+    lcd.print(F("Save"));
+  }
+}
+
 
 ////////////////////////////////////////////////
 //  HELPER FUNCTIONS  //
@@ -341,18 +387,18 @@ void changeState(MenuState newState) {  // transition between program states and
   previousState = currentState;
   currentState = newState;
   lcd.noBlink();
-  clearDisplay(0);
+  clearDisplay(0, 0);
 }
 
-void clearDisplay(byte columnStart) {
+void clearDisplay(byte columnStart, byte rowStart) {
   // Clear the LCD quicker than `lcd.clear` because it doesn't delay for 2 seconds after
   // Iterate over columns, rather than directly print LCD_WIDTH spaces, to trade program space (more code) for less global variable space
-  for (byte row = 0; row < 2; ++row) {
+  for (byte row = rowStart; row < 2; ++row) {
     lcd.setCursor(columnStart, row);
     for (byte column = columnStart; column < LCD_WIDTH; ++column)
       lcd.print(F(" "));
   }
-  lcd.setCursor(0, 0);
+  lcd.setCursor(0, rowStart);
 }
 
 void getJoystickState() {
@@ -362,6 +408,17 @@ void getJoystickState() {
   joystickState.left = joystickX < (512 - JOYSTICK_TILT_THRESHOLD);
   joystickState.right = joystickX > (512 + JOYSTICK_TILT_THRESHOLD);
   joystickState.up = joystickY < (512 - JOYSTICK_TILT_THRESHOLD);
+}
+
+char incrementWithin(char value, byte size) {  // Ensure value is positive before taking its mod to avoid negative results
+  return (value + size) % size;
+}
+
+void outputMenuOption() {
+  lcd.setCursor(5, 1);
+  lcd.print(F(">"));
+  lcd.print(MENU_OPTIONS[selectionIndex].title);
+  lcd.setCursor(5, 1);  // position the cursor at `>`
 }
 
 int plotCharacter(struct Character &character, int beginX) {  // this function passes the vectors from a character though the plotLine function to draw it
