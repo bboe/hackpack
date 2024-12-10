@@ -1,220 +1,157 @@
-//This is the SKETCH MODE hack of the Hack Pack LabelMaker.
-
-
-
 //////////////////////////////////////////////////
 //  LIBRARIES  //
 //////////////////////////////////////////////////
-#include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#include <Stepper.h>
-#include <ezButton.h>
+#include <OneButton.h>
 #include <Servo.h>
+#include <Stepper.h>
+#include <Wire.h>
+
 
 //////////////////////////////////////////////////
 //  PINS AND PARAMETERS  //
 //////////////////////////////////////////////////
-#define INIT_MSG "Initializing..."      // Text to display on startup
-#define MODE_NAME "  SKETCH MODE   "    //these are variables for the text which is displayed in different menus.
-#define BOTTOM_TEXT " CLICK TO DRAW  "  //try changing these, or making new ones and adding conditions for when they are used
+#define JOYSTICK_BUTTON_PIN 14       // Connect the joystick button to this pin
+#define JOYSTICK_TILT_THRESHOLD 200  // Adjust this threshold value based on your joystick
+#define JOYSTICK_X_PIN A2            // Connect the joystick X-axis to this analog pin
+#define JOYSTICK_Y_PIN A1            // Connect the joystick Y-axis to this analog pin
+#define LCD_WIDTH 16
+#define SERVO_DELAY 150  // Milliseconds to delay after moving the servo
+#define SERVO_OFF_PAPER_ANGLE 25
+#define SERVO_ON_PAPER_ANGLE 80
+#define SERVO_PIN 13
+#define SPEED_SCALER 4  // Number of times to run the movement, alters speed, keep low-ish so you don't get locked into its loop forever
+#define STEP_SIZE_X 1
+#define STEP_SIZE_Y 3
+#define STEPPER_STEPS_PER_REVOLUTION 2048
 
-LiquidCrystal_I2C lcd(0x27, 16, 2);  // Set the LCD address to 0x27 for a 16x2 display
+#define BOTTOM_TEXT " CLICK TO DRAW"  // try changing these, or making new ones and adding conditions for when they are used
+#define INIT_MSG "Initializing..."    // Text to display on startup
+#define MODE_NAME "  SKETCH MODE"     // these are variables for the text which is displayed in different menus.
 
-ezButton button1(14);  //joystick button handler
+// enums and structs
+enum JoystickButtonState { NEUTRAL,
+                           SINGLE_CLICK };
 
-// Joystick setup
-const int joystickXPin = A2;              // Connect the joystick X-axis to this analog pin
-const int joystickYPin = A1;              // Connect the joystick Y-axis to this analog pin
-const int joystickButtonThreshold = 200;  // Adjust this threshold value based on your joystick
+struct JoystickState {
+  bool down;
+  bool left;
+  bool right;
+  bool up;
+  JoystickButtonState buttonState;
+};
 
-// Menu parameters
-int currentCharacter = 0;          //keep track of which character is currently displayed under the cursor
-int cursorPosition = 0;            //keeps track of the cursor position (left to right) on the screen
-int currentPage = 0;               //keeps track of the current page for menus
-const int charactersPerPage = 16;  //number of characters that can fit on one row of the screen
+// hardware variables
+bool penOnPaper = false;  // current state of pen on paper
+struct JoystickState joystickState;
 
-// Stepper motor parameters
-const int stepCount = 200;
-const int stepsPerRevolution = 2048;
-
-// initialize the stepper library for both steppers:
-Stepper xStepper(stepsPerRevolution, 6, 8, 7, 9);
-Stepper yStepper(stepsPerRevolution, 2, 4, 3, 5);
-
-int xPins[4] = { 6, 8, 7, 9 };  // pins for x-motor coils
-int yPins[4] = { 2, 4, 3, 5 };  // pins for y-motor coils
-
-//Servo
-const int SERVO_PIN = 13;
+// initialize the hardware
+LiquidCrystal_I2C lcd(0x27, LCD_WIDTH, 2);  // Set the LCD address to 0x27 for a 16x2 display
+OneButton joystickButton;
 Servo servo;
-int angle = 30;  // the current angle of servo motor
-
-
-// Creates states to store what the current menu and joystick states are
-// Decoupling the state from other functions is good because it means the sensor / screen aren't hardcoded into every single action and can be handled at a higher level
-enum State { MainMenu,
-             Editing,
-             PrintConfirmation,
-             Printing,
-             SketchMode };
-State currentState = SketchMode;
-State prevState = Printing;
-
-enum jState { LEFT,
-              RIGHT,
-              UP,
-              DOWN,
-              MIDDLE,
-              UPRIGHT,
-              UPLEFT,
-              DOWNRIGHT,
-              DOWNLEFT };
-jState joyState = MIDDLE;
-jState prevJoyState = MIDDLE;
-
-boolean pPenOnPaper = false;  // pen on paper in previous cycle
-int lineCount = 0;
-
-int xpos = 0;
-int ypos = 0;
-int ymax = 1200;
-bool joyUp;
-bool joyDown;
-bool joyLeft;
-bool joyRight;
-int button1State;
-int joystickX;
-int joystickY;
+Stepper xStepper(STEPPER_STEPS_PER_REVOLUTION, 6, 8, 7, 9);
+Stepper yStepper(STEPPER_STEPS_PER_REVOLUTION, 2, 4, 3, 5);
 
 
 //////////////////////////////////////////////////
 //  S E T U P  //
 //////////////////////////////////////////////////
 void setup() {
+  Serial.begin(9600);  // initialize serial console so we can output messages
+
+  Serial.println(F("initializing LCD"));
   lcd.init();
   lcd.backlight();
-
   lcd.setCursor(0, 0);
-  lcd.print(INIT_MSG);  // print start up message
+  lcd.print(F(INIT_MSG));  // print start up message
 
-  pinMode(LED_BUILTIN, OUTPUT);
+  // set up joystick callbacks
+  // Lambda functions are used here because we don't need complex logic in the callbacks
+  joystickButton.setup(JOYSTICK_BUTTON_PIN, INPUT_PULLUP, true);
+  joystickButton.attachClick([]() {
+    joystickState.buttonState = SINGLE_CLICK;
+  });
 
-  Serial.begin(9600);
+  Serial.println(F("initializing motors"));
+  servo.attach(SERVO_PIN);             // attaches the servo pin to the servo object
+  servo.write(SERVO_OFF_PAPER_ANGLE);  // ensure that the servo is lifting the pen carriage away from the tape
+  xStepper.setSpeed(10);               // set x stepper speed (these should stay the same)
+  yStepper.setSpeed(12);               // set y stepper speed (^ weird stuff happens when you push it too fast)
 
-  button1.setDebounceTime(50);
+  Serial.println(F("resetting motors"));
+  resetMotors();
 
-  servo.attach(SERVO_PIN);  // attaches the servo pin to the servo object
-  servo.write(angle);
-
-  plot(false);
-
-  // set the speed of the motors
-  yStepper.setSpeed(12);  // set first stepper speed
-  xStepper.setSpeed(10);  // set second stepper speed
-
-  penUp();      //ensure that the servo is lifting the pen carriage away from the tape
-  homeYAxis();  //lower the Y axis all the way to the bottom
-
-  ypos = 0;
-  xpos = 0;
-
-  releaseMotors();
-  lcd.clear();
+  clearDisplay();
+  lcd.print(F(MODE_NAME));  // top line of screen text
+  lcd.setCursor(0, 1);
+  lcd.print(F(BOTTOM_TEXT));  // bottom line of screen text
 }
+
 
 ////////////////////////////////////////////////
 //  L O O P  //
 ////////////////////////////////////////////////
 void loop() {
+  joystickState.buttonState = NEUTRAL;  // Because callbacks are used to set this value, we need to explicitly clear it before calling tick
+  joystickButton.tick();
 
-  button1.loop();
-  button1State = button1.getState();
+  if (joystickState.buttonState == SINGLE_CLICK) {
+    setPen(!penOnPaper);
+    return;  // Ignore x/y movement when pressing the button
+  }
 
-  joystickX = analogRead(joystickXPin);
-  joystickY = analogRead(joystickYPin);
-  joyUp = joystickY < (512 - joystickButtonThreshold);
-  joyDown = joystickY > (512 + joystickButtonThreshold);
-  joyLeft = joystickX < (512 - joystickButtonThreshold);
-  joyRight = joystickX > (512 + joystickButtonThreshold);
+  getJoystickState();
 
-  switch (currentState) {  //state machine that determines what to do with the input controls based on what mode the device is in
+  for (int i = 0; i < SPEED_SCALER; ++i) {
+    if (joystickState.down)
+      yStepper.step(-STEP_SIZE_Y);
+    else if (joystickState.up)
+      yStepper.step(STEP_SIZE_Y);
 
-    case SketchMode:
-      {
-        if (prevState != SketchMode) {
-          lcd.clear();
-          lcd.setCursor(0, 0);
-          lcd.print(MODE_NAME);  //top line of screen text
-          lcd.setCursor(0, 1);
-          lcd.print(BOTTOM_TEXT);  //bottom line of screen text
-          cursorPosition = 5;
-          prevState = SketchMode;
-        }
-
-        int speed_scaler = 4;  // number of times to run the movement, alters speed, keep low-ish so you don't get locked into this for loop forever
-        //Serial.println(ypos);
-        for (int i = 0; i < speed_scaler; i++) {
-          if (joyUp) {
-            yStepper.step(3);  //move up by a certain amount if the joystick is pushed up.
-            ypos++;
-          }
-
-          if (joyDown) {
-            yStepper.step(-3);
-            ypos--;
-          }
-
-          if (joyLeft) {
-            xStepper.step(1);
-            xpos--;
-          }
-
-          if (joyRight) {
-            xStepper.step(-1);
-            xpos++;
-          }
-        }
-
-        if (button1.isPressed()) {
-          if (!pPenOnPaper) {
-            plot(1);
-          } else {
-            plot(0);
-          }
-        }
-      }
-
-      break;
+    // Up/down and left/right are mutually exclusive but x and y movement can occur together
+    if (joystickState.left)
+      xStepper.step(STEP_SIZE_X);
+    else if (joystickState.right)
+      xStepper.step(-STEP_SIZE_X);
   }
 }
 
-void plot(boolean penOnPaper) {  //used to handle lifting or lowering the pen on to the tape
-  if (penOnPaper) {              //if the pen is already up, put it down
-    angle = 80;
-  } else {  //if down, then lift up.
-    angle = 25;
+////////////////////////////////////////////////
+//  HELPER FUNCTIONS  //
+////////////////////////////////////////////////
+void clearDisplay() {
+  // Clear the LCD quicker than `lcd.clear` because it doesn't delay for 2 seconds after
+  for (byte row = 0; row < 2; ++row) {
+    lcd.setCursor(0, row);
+    lcd.print(F("                "));
   }
-  servo.write(angle);                        //actuate the servo to either position.
-  if (penOnPaper != pPenOnPaper) delay(50);  //gives the servo time to move before jumping into the next action
-  pPenOnPaper = penOnPaper;                  //store the previous state.
+  lcd.setCursor(0, 0);
 }
 
-void penUp() {  //singular command to lift the pen up
-  servo.write(25);
+void getJoystickState() {
+  int joystickX = analogRead(JOYSTICK_X_PIN);
+  int joystickY = analogRead(JOYSTICK_Y_PIN);
+  joystickState.down = joystickY > (512 + JOYSTICK_TILT_THRESHOLD);
+  joystickState.left = joystickX < (512 - JOYSTICK_TILT_THRESHOLD);
+  joystickState.right = joystickX > (512 + JOYSTICK_TILT_THRESHOLD);
+  joystickState.up = joystickY < (512 - JOYSTICK_TILT_THRESHOLD);
 }
 
-void penDown() {  //singular command to put the pen down
-  servo.write(80);
-}
+void resetMotors() {
+  const int xPins[4] = { 6, 8, 7, 9 };  // pins for x-motor coils
+  const int yPins[4] = { 2, 4, 3, 5 };  // pins for y-motor coils
 
-void releaseMotors() {
-  for (int i = 0; i < 4; i++) {  //deactivates all the motor coils
-    digitalWrite(xPins[i], 0);   //just picks each motor pin and send 0 voltage
+  for (int i = 0; i < 4; i++) {  // deactivates all the motor coils
+    digitalWrite(xPins[i], 0);   // picks each motor pin and drops voltage to 0
     digitalWrite(yPins[i], 0);
   }
-  plot(false);
+  setPen(false);
 }
 
-void homeYAxis() {
-  yStepper.step(-3000);  //lowers the pen holder to it's lowest position.
+void setPen(bool toPaper) {  // used to handle lifting or lowering the pen on to the tape
+  if (toPaper != penOnPaper) {
+    servo.write(toPaper ? SERVO_ON_PAPER_ANGLE : SERVO_OFF_PAPER_ANGLE);  // actuate the servo to either position
+    delay(SERVO_DELAY);                                                   // gives the servo time to move before jumping into the next action
+    penOnPaper = toPaper;                                                 // store the previous state
+  }
 }

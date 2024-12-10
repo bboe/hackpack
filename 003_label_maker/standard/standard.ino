@@ -29,6 +29,9 @@
 #define SERVO_OFF_PAPER_ANGLE 25
 #define SERVO_ON_PAPER_ANGLE 80
 #define SERVO_PIN 13
+#define SKETCH_SPEED_SCALER 4  // Number of times to run the movement, alters speed, keep low-ish so you don't get locked into its loop forever
+#define SKETCH_STEP_SIZE_X 1
+#define SKETCH_STEP_SIZE_Y 3
 #define SPACE (SCALE_X * 5)  // space size between letters (as steps) based on X scale in order to match letter width
 #define STEPPER_STEPS_PER_REVOLUTION 2048
 #define VECTOR_END 192
@@ -53,7 +56,8 @@ enum MenuState { Delete,
                  MainMenu,
                  Print,
                  PrintConfirmation,
-                 Save };
+                 Save,
+                 Sketch };
 
 struct Character {
   char character;
@@ -150,7 +154,7 @@ const PROGMEM struct Character CHARACTERS[] = {
   { '~', { 0, 140, 144, 104, 100, 13, 113, 33, 133, 32, 131, 111, 112, 132 } },  // Open mouth Smiley
   { '$', { 20, 142, 143, 134, 123, 114, 103, 102, 120, VECTOR_END } },           // Heart
 };
-const struct MenuOption MENU_OPTIONS[] = { { "START", Edit }, { "LOAD", Load }, { "SAVE", Save }, { "DELETE", Delete } };
+const struct MenuOption MENU_OPTIONS[] = { { "PRINT", Edit }, { "LOAD", Load }, { "SAVE", Save }, { "DELETE", Delete }, { "SKETCH", Sketch } };
 
 // menu variables
 bool confirmAction;                    // keeps track of yes or no confirmations
@@ -210,9 +214,6 @@ void setup() {
   xStepper.setSpeed(10);               // set x stepper speed (these should stay the same)
   yStepper.setSpeed(12);               // set y stepper speed (^ weird stuff happens when you push it too fast)
 
-  Serial.println(F("resetting motors"));
-  resetMotors();
-
   updateChosenCharacter();  // Initialize the first space character
   changeState(MainMenu);
 }
@@ -255,6 +256,9 @@ void loop() {
       break;
     case Save:
       handleSave();
+      break;
+    case Sketch:
+      handleSketch();
       break;
   }
 }
@@ -387,6 +391,7 @@ void handleLoad() {
 void handleMainMenu() {
   if (previousState != MainMenu) {
     previousState = MainMenu;
+    resetMotors();
     selectionIndex = 0;
     lcd.print(F(MODE_NAME));
     outputMenuOption();
@@ -473,6 +478,35 @@ void handleSave() {
       saveText();
     }
     changeState(MainMenu);
+  }
+}
+
+void handleSketch() {
+  if (previousState != Sketch) {
+    previousState = Sketch;
+    lcd.print(F("SKETCH MODE"));  // top line of screen text
+    lcd.setCursor(0, 1);
+    lcd.print(F("CLICK TO DRAW"));  // bottom line of screen text
+  } else if (joystickState.buttonState == SINGLE_CLICK) {
+    setPen(!penOnPaper);
+    return;  // Ignore x/y movement when pressing the button
+  }
+
+  for (int i = 0; i < SKETCH_SPEED_SCALER; ++i) {
+    if (joystickState.down) {
+      positionY = max(0, positionY - SKETCH_STEP_SIZE_Y);  // Don't allow this value to go negative.
+      yStepper.step(-SKETCH_STEP_SIZE_Y);
+    } else if (joystickState.up) {
+      positionY += SKETCH_STEP_SIZE_Y;
+      yStepper.step(SKETCH_STEP_SIZE_Y);
+    }
+
+    // Up/down and left/right are mutually exclusive but x and y movement can occur together
+    if (joystickState.left) {
+      xStepper.step(SKETCH_STEP_SIZE_X);
+    } else if (joystickState.right) {
+      xStepper.step(-SKETCH_STEP_SIZE_X);
+    }
   }
 }
 
@@ -669,7 +703,6 @@ void plotText() {  // breaks up the input by character for plotting
   lcd.blink();                     // highlight ending space
   plotLine(beginX + SPACE, 0, 0);  // move pen to start location for subsequent plotting
   lcd.noBlink();
-  resetMotors();
 }
 
 char *readSavedText(byte position) {
@@ -681,9 +714,14 @@ void resetMotors() {
   const int yPins[4] = { 2, 4, 3, 5 };  // pins for y-motor coils
 
   setPen(false);
-  yStepper.step(0 - positionY);
+  if (positionY > 0) {
+    Serial.println(F("resetting motors"));
+    lcd.print(F("Homing Y-Axis"));
+    yStepper.step(-positionY);
+    positionY = 0;
+    clearDisplay(0, 0);
+  }
   positionX = 0;
-  positionY = 0;
 
   for (int i = 0; i < 4; i++) {  // deactivates all the motor coils
     digitalWrite(xPins[i], 0);   // picks each motor pin and drops voltage to 0
