@@ -1,102 +1,42 @@
-//This is the Mark Rober Logo hack for the Hack Pack LabelMaker
-
-
 //////////////////////////////////////////////////
 //  LIBRARIES  //
 //////////////////////////////////////////////////
-#include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#include <Stepper.h>
-#include <ezButton.h>
+#include <OneButton.h>
 #include <Servo.h>
+#include <Stepper.h>
+#include <Wire.h>
+
 
 //////////////////////////////////////////////////
 //  PINS AND PARAMETERS  //
 //////////////////////////////////////////////////
+#define JOYSTICK_BUTTON_PIN 14  // Connect the joystick button to this pin
+#define LCD_WIDTH 16
+#define LOGO_SCALE_X 15  // Multiplied scale
+#define LOGO_VECTOR_SIZE (sizeof(LOGO_VECTOR) / sizeof(LOGO_VECTOR[0]))
 
-LiquidCrystal_I2C lcd(0x27, 16, 2);  // Set the LCD address to 0x27 for a 16x2 display
+#define RESET_Y_STEPS 3500  // The number of steps needed to move the pen holder all the way to the bottom
+#define SERVO_DELAY 150     // Milliseconds to delay after moving the servo
+#define SERVO_OFF_PAPER_ANGLE 25
+#define SERVO_ON_PAPER_ANGLE 80
+#define SERVO_PIN 13
+#define STEPPER_STEPS_PER_REVOLUTION 2048
 
-ezButton button1(14);                 //joystick button handler
-#define INIT_MSG "Initializing..."    // Text to display on startup
-#define MODE_NAME "    MARK LOGO   "  //these are variables for the text which is displayed in different menus.
-#define PLOTTING "   PLOTTING...  "   //try changing these, or making new ones and adding conditions for when they are used
+#define INIT_MSG "Initializing..."  // Text to display on startup
+#define MODE_NAME "    MARK LOGO"   // these are variables for the text which is displayed in different menus.
+#define PLOTTING "   PLOTTING..."   //try changing these, or making new ones and adding conditions for when they are used
 
+// enums and structs
+enum JoystickButtonState { NEUTRAL,
+                           SINGLE_CLICK };
 
-// Joystick setup
-const int joystickXPin = A2;              // Connect the joystick X-axis to this analog pin
-const int joystickYPin = A1;              // Connect the joystick Y-axis to this analog pin
-const int joystickButtonThreshold = 200;  // Adjust this threshold value based on your joystick
+enum MenuState { MainMenu,
+                 PlotLogo };
 
-// Menu parameters
-int currentCharacter = 0;          //keep track of which character is currently displayed under the cursor
-int cursorPosition = 0;            //keeps track of the cursor position (left to right) on the screen
-int currentPage = 0;               //keeps track of the current page for menus
-const int charactersPerPage = 16;  //number of characters that can fit on one row of the screen
-
-// Stepper motor parameters
-const int stepCount = 200;
-const int stepsPerRevolution = 2048;
-
-// initialize the stepper library for both steppers:
-Stepper xStepper(stepsPerRevolution, 6, 8, 7, 9);
-Stepper yStepper(stepsPerRevolution, 2, 4, 3, 5);
-
-int xPins[4] = { 6, 8, 7, 9 };  // pins for x-motor coils
-int yPins[4] = { 2, 4, 3, 5 };  // pins for y-motor coils
-
-//Servo
-const int SERVO_PIN = 13;
-Servo servo;
-int angle = 30;  // the current angle of servo motor
-
-
-// Creates states to store what the current menu and joystick states are
-// Decoupling the state from other functions is good because it means the sensor / screen aren't hardcoded into every single action and can be handled at a higher level
-enum State { MainMenu,
-             Editing,
-             PrintConfirmation,
-             Printing,
-             plotMarkLogo };
-State currentState = MainMenu;
-State prevState = Printing;
-
-enum jState { LEFT,
-              RIGHT,
-              UP,
-              DOWN,
-              MIDDLE,
-              UPRIGHT,
-              UPLEFT,
-              DOWNRIGHT,
-              DOWNLEFT };
-jState joyState = MIDDLE;
-jState prevJoyState = MIDDLE;
-
-boolean pPenOnPaper = false;  // pen on paper in previous cycle
-int lineCount = 0;
-
-int xpos = 0;
-int ypos = 0;
-const int posS = 2;
-const int posM = 7;
-const int posL = 12;
-bool joyUp;
-bool joyDown;
-bool joyLeft;
-bool joyRight;
-int button1State;
-int joystickX;
-int joystickY;
-
-
-//////////////////////////////////////////////////
-//  LOGO VECTOR  //
-//////////////////////////////////////////////////
-
-//the first number is X coordinate, second is Y coordinate, and third is pen up / down (0 = up)
-
-const uint8_t MRvector[22][3] = {
-  //try calling the plotMR() function instead of printing on button press
+// constants
+const byte LOGO_VECTOR[][3] = {
+  // the first number is X coordinate, second is Y coordinate, and third is pen up / down (0 = up)
   { 57, 6, 0 },
   { 33, 9, 1 },
   { 60, 15, 0 },
@@ -118,233 +58,216 @@ const uint8_t MRvector[22][3] = {
   { 30, 48, 1 },
   { 45, 63, 0 },
   { 45, 42, 1 },
-  { 0, 0, 0 }
+  { 80, 0, 0 }  // Advance forward after drawing logo
 };
+
+// menu variables
+MenuState currentState = PlotLogo;  // The initial value needs to be anything other than `MainMenu`
+MenuState previousState;
+
+// hardware variables
+bool penOnPaper = false;  // current state of pen on paper
+int positionX;
+int positionY = RESET_Y_STEPS;  // ensure resetMotors lowers the Y axis all the way to the bottom
+JoystickButtonState joystickButtonState;
+
+// initialize the hardware
+LiquidCrystal_I2C lcd(0x27, LCD_WIDTH, 2);  // Set the LCD address to 0x27 for a 16x2 display
+OneButton joystickButton;
+Servo servo;
+Stepper xStepper(STEPPER_STEPS_PER_REVOLUTION, 6, 8, 7, 9);
+Stepper yStepper(STEPPER_STEPS_PER_REVOLUTION, 2, 4, 3, 5);
 
 
 //////////////////////////////////////////////////
 //  S E T U P  //
 //////////////////////////////////////////////////
 void setup() {
+  Serial.begin(9600);  // initialize serial console so we can output messages
+
+  Serial.println(F("initializing LCD"));
   lcd.init();
   lcd.backlight();
-
   lcd.setCursor(0, 0);
-  lcd.print(INIT_MSG);  // print start up message
+  lcd.print(F(INIT_MSG));  // print start up message
 
-  pinMode(LED_BUILTIN, OUTPUT);
+  // set up joystick callbacks
+  // Lambda functions are used here because we don't need complex logic in the callbacks
+  joystickButton.setup(JOYSTICK_BUTTON_PIN, INPUT_PULLUP, true);
+  joystickButton.attachClick([]() {
+    joystickButtonState = SINGLE_CLICK;
+  });
 
-  Serial.begin(9600);
+  Serial.println(F("initializing motors"));
+  servo.attach(SERVO_PIN);             // attaches the servo pin to the servo object
+  servo.write(SERVO_OFF_PAPER_ANGLE);  // ensure that the servo is lifting the pen carriage away from the tape
+  xStepper.setSpeed(10);               // set x stepper speed (these should stay the same)
+  yStepper.setSpeed(12);               // set y stepper speed (^ weird stuff happens when you push it too fast)
 
-  button1.setDebounceTime(50);
-
-  servo.attach(SERVO_PIN);  // attaches the servo pin to the servo object
-  servo.write(angle);
-
-  plot(false);
-
-  // set the speed of the motors
-  yStepper.setSpeed(10);  // set first stepper speed
-  xStepper.setSpeed(8);   // set second stepper speed
-
-  penUp();      //ensure that the servo is lifting the pen carriage away from the tape
-  homeYAxis();  //lower the Y axis all the way to the bottom
-
-  ypos = 0;
-  xpos = 0;
-
-  releaseMotors();
-  lcd.clear();
+  changeState(MainMenu);
 }
+
 
 ////////////////////////////////////////////////
 //  L O O P  //
 ////////////////////////////////////////////////
 void loop() {
+  joystickButtonState = NEUTRAL;  // Because callbacks are used to set this value, we need to explicitly clear it before calling tick
+  joystickButton.tick();
 
-  button1.loop();
-  button1State = button1.getState();
-
-  joystickX = analogRead(joystickXPin);
-  joystickY = analogRead(joystickYPin);
-  joyUp = joystickY < (512 - joystickButtonThreshold);
-  joyDown = joystickY > (512 + joystickButtonThreshold);
-  joyLeft = joystickX < (512 - joystickButtonThreshold);
-  joyRight = joystickX > (512 + joystickButtonThreshold);
-
-  switch (currentState) {  //state machine that determines what to do with the input controls based on what mode the device is in
-
-    case plotMarkLogo:
-      {
-        if (prevState != plotMarkLogo) {
-          lcd.clear();
-          lcd.setCursor(0, 0);
-          lcd.print(MODE_NAME);  //display the mode name
-          lcd.setCursor(0, 1);
-          lcd.print(PLOTTING);
-          cursorPosition = 5;
-          prevState = plotMarkLogo;
-        }
-
-        lcd.setCursor(cursorPosition, 1);
-
-        plotMR();
-        homeYAxis();
-        releaseMotors();
-        lcd.clear();
-        currentState = MainMenu;
-        prevState = plotMarkLogo;
-      }
-
-      break;
-
+  switch (currentState) {  // state machine that determines what to do with the input controls based on what mode the device is in
     case MainMenu:
-      {
-        if (prevState != MainMenu) {
-          lcd.clear();
-          lcd.setCursor(0, 0);
-          lcd.print(MODE_NAME);
-          lcd.setCursor(0, 1);
-          lcd.print("      START     ");
-          cursorPosition = 5;
-          prevState = MainMenu;
-        }
-
-        lcd.setCursor(cursorPosition, 1);
-
-        if (millis() % 600 < 400) {  // Blink every 500 ms
-          lcd.print(">");
-        } else {
-          lcd.print(" ");
-        }
-
-        if (button1.isPressed()) {  //handles clicking options in text size setting
-          lcd.clear();
-          currentState = plotMarkLogo;
-          prevState = MainMenu;
-        }
-      }
+      handleMainMenu();
+      break;
+    case PlotLogo:
+      handlePlotLogo();
       break;
   }
 }
 
-void line(int newx, int newy, bool drawing) {
-  //this function is an implementation of bresenhams line algorithm
-  //this algorithm basically finds the slope between any two points, allowing us to figure out how many steps each motor should do to move smoothly to the target
-  //in order to do this, we give this function our next X (newx) and Y (newy) coordinates, and whether the pen should be up or down (drawing)
 
-  if (drawing < 2) {  //checks if we should be drawing and puts the pen up or down based on that.
-    plot(drawing);    // dashed: 0= don't draw / 1=draw / 2... = draw dashed with variable dash width
-  } else {
-    plot((stepCount / drawing) % 2);  //can do dashed lines, but for now this isn't doing anything since we're only sending 0 or 1.
+////////////////////////////////////////////////
+//  STATE FUNCTIONS  //
+////////////////////////////////////////////////
+void handleMainMenu() {
+  if (previousState != MainMenu) {
+    previousState = MainMenu;
+    resetMotors();
+    lcd.print(F(MODE_NAME));
+    lcd.setCursor(0, 1);
+    lcd.print(F("     >START"));
+    lcd.setCursor(5, 1);
+    lcd.blink();                                     // blink the `>` at the cursor
+  } else if (joystickButtonState == SINGLE_CLICK) {  // handles clicking
+    changeState(PlotLogo);
   }
+}
 
-  int i;
-  long over = 0;
+void handlePlotLogo() {
+  // state does not need to be checked here because this case should execute only once
+  previousState = PlotLogo;
+  lcd.print(F(MODE_NAME));
+  lcd.setCursor(0, 1);
+  lcd.print(F(PLOTTING));
 
-  long dx = newx - xpos;       //calculate the difference between where we are (xpos) and where we want to be (newx)
-  long dy = newy - ypos;       //difference for Y
-  int dirx = dx > 0 ? -1 : 1;  //this is called a ternary operator, it's basically saying: if dx is greater than 0, then dirx = -1, if dx is less than or equal to 0, dirx = 1.
-  int diry = dy > 0 ? 1 : -1;  //this is called a ternary operator, it's basically saying: if dy is greater than 0, then diry = 1, if dy is less than or equal to 0, diry = -1.
-  //the reason one of these ^ is inverted logic (1/-1) is due to the direction these motors rotate in the system.
+  plotLogo();
 
-  dx = abs(dx);  //normalize the dx/dy values so that they are positive.
-  dy = abs(dy);  //abs() is taking the "absolute value" - basically it removes the negative sign from negative numbers
+  changeState(MainMenu);
+}
 
-  //the following nested If statements check which change is greater, and use that to determine which coordinate (x or y) get's treated as the rise or the run in the slope calculation
-  //we have to do this because technically bresenhams only works for the positive quandrant of the cartesian coordinate grid,
-  // so we are just flipping the values around to get the line moving in the correct direction relative to it's current position (instead of just up an to the right)
-  if (dx > dy) {
-    over = dx / 2;
-    for (i = 0; i < dx; i++) {  //for however much our current position differs from the target,
-      xStepper.step(dirx);      //do a step in that direction (remember, dirx is always going to be either 1 or -1 from the ternary operator above)
 
-      // Serial.print("Xsteps: ");
-      // Serial.print(dirx);
-      // Serial.print("  ");
+////////////////////////////////////////////////
+//  HELPER FUNCTIONS  //
+////////////////////////////////////////////////
+void changeState(MenuState newState) {  // transition between program states and clear the display
+  Serial.print(F("Changing state "));
+  Serial.print(currentState);
+  Serial.print(F("->"));
+  Serial.println(newState);
+  previousState = currentState;
+  currentState = newState;
+  lcd.noBlink();
+  clearDisplay(0, 0);
+}
 
-      over += dy;
-      if (over >= dx) {
-        over -= dx;
+void clearDisplay(byte columnStart, byte rowStart) {
+  // Clear the LCD quicker than `lcd.clear` because it doesn't delay for 2 seconds after
+  // Iterate over columns, rather than directly print LCD_WIDTH spaces, to trade program space (more code) for less global variable space
+  for (byte row = rowStart; row < 2; ++row) {
+    lcd.setCursor(columnStart, row);
+    for (byte column = columnStart; column < LCD_WIDTH; ++column)
+      lcd.print(F(" "));
+  }
+  lcd.setCursor(0, rowStart);
+}
 
-        // Serial.print("Ysteps: ");
-        // Serial.println(diry);
+void plotLine(int newX, int newY, bool draw) {
+  // this function is an implementation of bresenhams line algorithm
+  // this algorithm basically finds the slope between any two points, allowing us to figure out how many steps each motor should do to move smoothly to the target
+  // in order to do this, we give this function our next X (newX) and Y (newY) coordinates, and whether the pen should be up or down (draw)
+  setPen(draw);
 
-        yStepper.step(diry);
+  long over;
+  long deltaX = newX - positionX;  // calculate the difference between where we are (positionX) and where we want to be (newX)
+  long deltaY = newY - positionY;
+  int stepX = deltaX > 0 ? -1 : 1;  // this is called a ternary operator, it's basically saying: `if deltaX is greater than 0, then stepX = -1`, otherwise (deltaX is less than or equal to 0), `stepX = 1`
+  int stepY = deltaY > 0 ? 1 : -1;
+  // the reason one of these ^ is inverted (1/-1) is due to the direction these motors rotate in the system
+
+  deltaX = abs(deltaX);  // normalize the deltaX/deltaY values so that they are positive
+  deltaY = abs(deltaY);  // abs() is taking the "absolute value" - basically it removes the negative sign from negative numbers
+
+  // the following if statement checks which change is greater, and uses that to determine which coordinate (x or y) is treated as the rise or the run in the slope calculation
+  // we have to do this because technically bresenhams only works for the positive quandrant of the cartesian coordinate grid,
+  // so we are just flipping the values around to get the line moving in the correct direction relative to its current position (instead of just up an to the right)
+  if (deltaX > deltaY) {
+    over = deltaX / 2;
+    for (int i = 0; i < deltaX; i++) {  // for however much our current position differs from the target,
+      xStepper.step(stepX);             // step in that direction (remember, stepX is always going to be either 1 or -1 from the ternary operator above)
+      over += deltaY;
+      if (over >= deltaX) {
+        over -= deltaX;
+        yStepper.step(stepY);
       }
-      //delay(1);
     }
   } else {
-    over = dy / 2;
-    for (i = 0; i < dy; i++) {
-      yStepper.step(diry);
-      // Serial.print("Ysteps: ");
-      // Serial.print(diry);
-      // Serial.print("  ");
-      over += dx;
-      if (over >= dy) {
-        over -= dy;
-        // Serial.print("Xsteps: ");
-        // Serial.println(dirx);
-        xStepper.step(dirx);
+    over = deltaY / 2;
+    for (int i = 0; i < deltaY; i++) {
+      yStepper.step(stepY);
+      over += deltaX;
+      if (over >= deltaY) {
+        over -= deltaY;
+        xStepper.step(stepX);
       }
-      //delay(1);
     }
   }
-
-  xpos = newx;  //store positions
-  ypos = newy;  //store positions
+  positionX = newX;  // store new position
+  positionY = newY;  // store new position
 }
 
+void plotLogo() {  // plots a simplified version of the mark rober logo, stored as coordinates in memory in the LOGO_VECTOR array at the top
+  Serial.println(F("MARK LOGO TIME"));
+  for (int i = 0; i < LOGO_VECTOR_SIZE; ++i) {
+    bool draw = LOGO_VECTOR[i][2] == 1;                  // get draw (0 or 1)
+    int endX = LOGO_VECTOR[i][0] * LOGO_SCALE_X;         // get the X for the point we want to hit
+    int endY = LOGO_VECTOR[i][1] * LOGO_SCALE_X * 2.75;  // get its Y
 
-void plot(boolean penOnPaper) {  //used to handle lifting or lowering the pen on to the tape
-  if (penOnPaper) {              //if the pen is already up, put it down
-    angle = 80;
-  } else {  //if down, then lift up.
-    angle = 25;
+    Serial.print(F("Goal: ("));
+    Serial.print(endX);
+    Serial.print(F(", "));
+    Serial.print(endY);
+    Serial.print(F(") Draw: "));
+    Serial.println(draw);
+
+    plotLine(endX, endY, draw);  // use our plotLine function to head to that X and Y position, the third value is the pen up/down.
   }
-  servo.write(angle);                        //actuate the servo to either position.
-  if (penOnPaper != pPenOnPaper) delay(50);  //gives the servo time to move before jumping into the next action
-  pPenOnPaper = penOnPaper;                  //store the previous state.
 }
 
-void penUp() {  //singular command to lift the pen up
-  servo.write(25);
-}
 
-void penDown() {  //singular command to put the pen down
-  servo.write(80);
-}
+void resetMotors() {
+  const int xPins[4] = { 6, 8, 7, 9 };  // pins for x-motor coils
+  const int yPins[4] = { 2, 4, 3, 5 };  // pins for y-motor coils
 
-void releaseMotors() {
-  for (int i = 0; i < 4; i++) {  //deactivates all the motor coils
-    digitalWrite(xPins[i], 0);   //just picks each motor pin and send 0 voltage
+  setPen(false);
+  if (positionY > 0) {
+    Serial.println(F("resetting motors"));
+    lcd.print(F("Homing Y-Axis"));
+    yStepper.step(-positionY);
+    positionY = 0;
+    clearDisplay(0, 0);
+  }
+  positionX = 0;
+
+  for (int i = 0; i < 4; i++) {  // deactivates all the motor coils
+    digitalWrite(xPins[i], 0);   // picks each motor pin and drops voltage to 0
     digitalWrite(yPins[i], 0);
   }
-  plot(false);
 }
 
-void homeYAxis() {
-  yStepper.step(-3000);  //lowers the pen holder to it's lowest position.
-}
-
-void plotMR() {      //plots a simplified version of the mark rober logo, stored as coordinates in memory in the MRvector array at the top
-  int MRscale = 15;  //multiplied scale
-  Serial.println("MARK LOGO TIME");
-  for (int i = 0; i < 22; i++) {  //for each point in the shape we want to draw (in this case 22 points) execute the following
-    //(we step from one point to the next by increasing i by 1 each for loop, so we access the coordinates stored at row i)
-
-    int x_end = (MRvector[i][0]) * MRscale;         //get the X for the point we want to hit
-    int y_end = (MRvector[i][1]) * MRscale * 2.75;  // get it's Y
-    int p_up = MRvector[i][2];                      //get whether the pen is up or down
-
-    Serial.print("X_goal: ");
-    Serial.print(x_end);
-    Serial.print(" Y_goal: ");
-    Serial.print(y_end);
-    Serial.print(" Draw: ");
-    Serial.println(MRvector[i][2]);
-    line(x_end, y_end, p_up);  //use our line function to head to that X and Y position, the third value is the pen up/down.
+void setPen(bool toPaper) {  // used to handle lifting or lowering the pen on to the tape
+  if (toPaper != penOnPaper) {
+    servo.write(toPaper ? SERVO_ON_PAPER_ANGLE : SERVO_OFF_PAPER_ANGLE);  // actuate the servo to either position
+    delay(SERVO_DELAY);                                                   // gives the servo time to move before jumping into the next action
+    penOnPaper = toPaper;                                                 // store the previous state
   }
-  releaseMotors();
 }
