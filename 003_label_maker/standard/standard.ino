@@ -21,10 +21,12 @@
 #define JOYSTICK_Y_PIN A1            // Connect the joystick Y-axis to this analog pin
 #define LCD_REPRINT_DELAY 250        // Milliseconds to wait after reprint to avoid ghosting
 #define LCD_WIDTH 16
+#define LOGO_SCALE_X 15  // Multiplied scale
+#define LOGO_VECTOR_SIZE (sizeof(LOGO_VECTOR) / sizeof(LOGO_VECTOR[0]))
 #define MENU_SIZE (sizeof(MENU_OPTIONS) / sizeof(struct MenuOption))
-#define RESET_Y_STEPS 2500  // The number of steps needed to move the pen holder all the way to the bottom
-#define SCALE_X 230         // these are multiplied against the stored coordinate (between 0 and 4) to get the actual number of steps moved
-#define SCALE_Y 230         // for example, if this is 230(default), then 230(scale) x 4(max coordinate) = 920 (motor steps)
+#define PRINT_SCALE_X 230   // these are multiplied against the stored coordinate (between 0 and 4) to get the actual number of steps moved
+#define PRINT_SCALE_Y 230   // for example, if this is 230(default), then 230(scale) x 4(max coordinate) = 920 (motor steps)
+#define RESET_Y_STEPS 3500  // The number of steps needed to move the pen holder all the way to the bottom
 #define SERVO_DELAY 150     // Milliseconds to delay after moving the servo
 #define SERVO_OFF_PAPER_ANGLE 25
 #define SERVO_ON_PAPER_ANGLE 80
@@ -32,17 +34,15 @@
 #define SKETCH_SPEED_SCALER 4  // Number of times to run the movement, alters speed, keep low-ish so you don't get locked into its loop forever
 #define SKETCH_STEP_SIZE_X 1
 #define SKETCH_STEP_SIZE_Y 3
-#define SPACE (SCALE_X * 5)  // space size between letters (as steps) based on X scale in order to match letter width
+#define SPACE (PRINT_SCALE_X * 5)  // space size between letters (as steps) based on X scale in order to match letter width
 #define STEPPER_STEPS_PER_REVOLUTION 2048
 #define VECTOR_END 192
 #define VECTOR_POINTS 14
 #define WIDTH_ONE 1  // Used in combination with VECTOR_END
 #define WIDTH_TWO 2  // Used in combination with VECTOR_END
 
-#define INIT_MSG "Initializing..."   // Text to display on startup
-#define MODE_NAME "   LABELMAKER"    // these are variables for the text which is displayed in different menus.
-#define PRINT_CONF "  PRINT LABEL?"  // try changing these, or making new ones and adding conditions for when they are used
-#define PRINTING "    PRINTING"      // NOTE: this text must be LCD_WIDTH characters or LESS in order to fit on the screen correctly
+#define INIT_MSG "Initializing..."  // Text to display on startup
+#define MODE_NAME "   LABELMAKER"   // these are variables for the text which is displayed in different menus.
 
 // enums and structs
 enum JoystickButtonState { NEUTRAL,
@@ -54,6 +54,7 @@ enum MenuState { Delete,
                  Edit,
                  Load,
                  MainMenu,
+                 PlotLogo,
                  Print,
                  PrintConfirmation,
                  Save,
@@ -93,6 +94,31 @@ struct SaveHeader {
 };
 
 // constants
+const byte LOGO_VECTOR[][3] = {
+  // the first number is X coordinate, second is Y coordinate, and third is pen up / down (0 = up)
+  { 57, 6, 0 },
+  { 33, 9, 1 },
+  { 60, 15, 0 },
+  { 30, 18, 1 },
+  { 60, 24, 0 },
+  { 30, 27, 1 },
+  { 30, 36, 1 },
+  { 21, 42, 1 },
+  { 21, 75, 1 },
+  { 45, 84, 1 },
+  { 71, 75, 1 },
+  { 71, 42, 1 },
+  { 60, 36, 1 },
+  { 60, 30, 1 },
+  { 60, 48, 0 },
+  { 60, 69, 1 },
+  { 45, 63, 1 },
+  { 30, 69, 1 },
+  { 30, 48, 1 },
+  { 45, 63, 0 },
+  { 45, 42, 1 },
+  { 80, 0, 0 }  // Advance forward after plotting logo
+};
 const PROGMEM char INITIAL_SAVED_TEXTS[][LCD_WIDTH] = { "HACK PACK!", "CRUNCH LABS", "MARK ROBER", "LABEL MAKER", "FAT GUS", "SPACE SELFIE" };
 const PROGMEM struct Character CHARACTERS[] = {
   { ' ', { VECTOR_END } },
@@ -154,7 +180,7 @@ const PROGMEM struct Character CHARACTERS[] = {
   { '~', { 0, 140, 144, 104, 100, 13, 113, 33, 133, 32, 131, 111, 112, 132 } },  // Open mouth Smiley
   { '$', { 20, 142, 143, 134, 123, 114, 103, 102, 120, VECTOR_END } },           // Heart
 };
-const struct MenuOption MENU_OPTIONS[] = { { "PRINT", Edit }, { "LOAD", Load }, { "SAVE", Save }, { "DELETE", Delete }, { "SKETCH", Sketch } };
+const struct MenuOption MENU_OPTIONS[] = { { "PRINT", Edit }, { "LOAD", Load }, { "SAVE", Save }, { "DELETE", Delete }, { "SKETCH", Sketch }, { "MARK LOGO", PlotLogo } };
 
 // menu variables
 bool confirmAction;                    // keeps track of yes or no confirmations
@@ -247,6 +273,9 @@ void loop() {
       break;
     case MainMenu:
       handleMainMenu();
+      break;
+    case PlotLogo:
+      handlePlotLogo();
       break;
     case Print:
       handlePrint();
@@ -411,10 +440,22 @@ void handleMainMenu() {
   }
 }
 
+void handlePlotLogo() {
+  // state does not need to be checked here because this case should execute only once
+  previousState = PlotLogo;  // Since we come here directly from main menu we need to update this value
+  lcd.print(F(MODE_NAME));
+  lcd.setCursor(0, 1);
+  lcd.print(F("   PLOTTING..."));
+
+  plotLogo();
+
+  changeState(MainMenu);
+}
+
 void handlePrint() {
   // state does not need to be checked here because this case should execute only once
   chosenCharacters[chosenSize++] = characterIndex;  // the last selected character needs to be added
-  lcd.print(F(PRINTING));
+  lcd.print(F("    PRINTING"));
   lcd.setCursor(0, 1);  // move cursor to second the second line
   lcd.print(text);      // output the text to print
 
@@ -430,8 +471,8 @@ void handlePrint() {
 void handlePrintConfirmation() {
   if (previousState != PrintConfirmation) {
     previousState = PrintConfirmation;
-    lcd.print(F(PRINT_CONF));  // print menu text
-    lcd.setCursor(3, 1);       // move cursor to the second line, 4th column
+    lcd.print(F("  PRINT LABEL?"));  // print menu text
+    lcd.setCursor(3, 1);             // move cursor to the second line, 4th column
     lcd.print(F("YES     NO"));
     lcd.setCursor(10, 1);  // position cursor just before `NO`
     lcd.blink();
@@ -593,10 +634,10 @@ byte lookupCharacterIndex(char character) {
 }
 
 void outputMenuOption() {
-  lcd.setCursor(5, 1);
+  lcd.setCursor(3, 1);
   lcd.print(F(">"));
   lcd.print(MENU_OPTIONS[selectionIndex].title);
-  lcd.setCursor(5, 1);  // position the cursor at `>`
+  lcd.setCursor(3, 1);  // position the cursor at `>`
 }
 
 void outputSavedText(byte cursorPosition) {
@@ -614,9 +655,9 @@ int plotCharacter(struct Character &character, int beginX) {  // this function p
     byte vector = character.vectors[i];
     if ((vector & VECTOR_END) == VECTOR_END) {  // no more vectors in this array
       if (vector & WIDTH_ONE)
-        endSpace = SCALE_X;
+        endSpace = PRINT_SCALE_X;
       else if (vector & WIDTH_TWO)
-        endSpace = SCALE_X * 2;
+        endSpace = PRINT_SCALE_X * 2;
       break;
     }
     bool draw = vector >= 100;
@@ -624,9 +665,9 @@ int plotCharacter(struct Character &character, int beginX) {  // this function p
     byte vectorX = vector / 10;  // get x ...
     byte vectorY = vector % 10;  // and y
 
-    int endX = beginX + vectorX * SCALE_X;
-    int endY = vectorY * SCALE_Y * 3.5;  // we multiply by 3.5 here to equalize the Y output to match X, because the Y lead screw
-                                         // covers less distance per-step than the X motor wheel (about 3.5 times less haha)
+    int endX = beginX + vectorX * PRINT_SCALE_X;
+    int endY = vectorY * PRINT_SCALE_Y * 3.5;  // we multiply by 3.5 here to equalize the Y output to match X, because the Y lead screw
+                                               // covers less distance per-step than the X motor wheel (about 3.5 times less haha)
 
     Serial.print(F("Goal: ("));
     Serial.print(endX);
@@ -640,11 +681,11 @@ int plotCharacter(struct Character &character, int beginX) {  // this function p
   return endSpace;
 }
 
-void plotLine(int newX, int newY, bool drawing) {
+void plotLine(int newX, int newY, bool draw) {
   // this function is an implementation of bresenhams line algorithm
   // this algorithm basically finds the slope between any two points, allowing us to figure out how many steps each motor should do to move smoothly to the target
-  // in order to do this, we give this function our next X (newX) and Y (newY) coordinates, and whether the pen should be up or down (drawing)
-  setPen(drawing);
+  // in order to do this, we give this function our next X (newX) and Y (newY) coordinates, and whether the pen should be up or down (draw)
+  setPen(draw);
 
   long over;
   long deltaX = newX - positionX;  // calculate the difference between where we are (positionX) and where we want to be (newX)
@@ -682,6 +723,24 @@ void plotLine(int newX, int newY, bool drawing) {
   }
   positionX = newX;  // store new position
   positionY = newY;  // store new position
+}
+
+void plotLogo() {  // plots a simplified version of the mark rober logo, stored as coordinates in memory in the LOGO_VECTOR array at the top
+  Serial.println(F("MARK LOGO TIME"));
+  for (int i = 0; i < LOGO_VECTOR_SIZE; ++i) {
+    bool draw = LOGO_VECTOR[i][2] == 1;                  // get draw (0 or 1)
+    int endX = LOGO_VECTOR[i][0] * LOGO_SCALE_X;         // get the X for the point we want to hit
+    int endY = LOGO_VECTOR[i][1] * LOGO_SCALE_X * 2.75;  // get its Y
+
+    Serial.print(F("Goal: ("));
+    Serial.print(endX);
+    Serial.print(F(", "));
+    Serial.print(endY);
+    Serial.print(F(") Draw: "));
+    Serial.println(draw);
+
+    plotLine(endX, endY, draw);  // use our plotLine function to head to that X and Y position, the third value is the pen up/down.
+  }
 }
 
 void plotText() {  // breaks up the input by character for plotting
