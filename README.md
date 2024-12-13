@@ -24,6 +24,11 @@
 - [Instructions](https://www.crunchlabs.com/products/sandy)
 - [Hack Pack IDE](https://ide.crunchlabs.com/editor/8785014489319)
 
+## 005 - Laser Tag
+
+- [Instructions](https://www.crunchlabs.com/products/laser)
+- [Hack Pack IDE](https://ide.crunchlabs.com/editor/8785014882535)
+
 
 ## Repository Branches
 
